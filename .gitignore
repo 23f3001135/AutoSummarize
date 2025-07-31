@@ -1,0 +1,13 @@
+# Ignore Python bytecode and cache directories
+__pycache__/
+*.pyc
+
+# Ignore Python virtual environments
+.venv/
+env/ # You might also have a virtual environment named "env"
+
+# Ignore environment variable files (often used for sensitive data)
+.env
+
+# Ignore large binary files or project specific files
+*.mp4
