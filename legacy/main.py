@@ -2,15 +2,12 @@
 # pip install google-genai python-dotenv rich
 
 from asyncio import sleep
-import base64
 import os
 
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 import logging
 from rich.logging import RichHandler
-from time import sleep
 from config import config
 
 
@@ -66,7 +63,7 @@ def generate(fileName, prompt=prompt, model=model):
         # Wait for the file to be processed.
         while file.state.name != "ACTIVE":
 
-            sleep(30)  # Wait for 10 seconds before checking again
+            sleep(60)  # Wait for 30 seconds before checking again
             log.info(f"Current file state: {file.state.name}")
             if file.state.name == "FAILED":
                 log.error(f"File processing failed with state: {file.state.name}")

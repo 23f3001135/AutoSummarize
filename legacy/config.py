@@ -1,10 +1,5 @@
-# ==============================================================================
-# File: config.py
-# Description: Contains configuration for the Gemini model and prompts.
-# ==============================================================================
 def config():
-    """Returns the model name, prompt, and segment duration."""
-    model = "gemini-1.5-flash" 
+    model = "gemini-2.5-flash" # Note: Corrected model name from gemini-2.5-flash to a valid one
     
     prompt = """
     You are an expert summarizer specializing in crafting professional minutes of meetings and executive summaries. Please analyze the following call recording and generate a concise, well-structured, and formal summary. Ensure the output reflects a tone appropriate for stakeholders or senior management.
@@ -15,5 +10,5 @@ def config():
     Maintain an objective tone and avoid subjective interpretation.
     Output Format: Provide the summary in a clean and professional style suitable for corporate documentation or official records. Important: avoid writting things like "Here's the minutes of the meeting as per your request which is professionally written" instead directly write what's asked and also avoid ending statements such as "Let me know if you’d like a lighter version for internal use or a template for recurring use across meetings." or anything similar your response will directly be copy pasted in docs and emailed to c-suite executives, so it should be ready to use without further editing."""
 
-    segment_duration = 900 # 15 minutes
+    segment_duration = 900 # Duration in seconds for each segment of the video to be processed totalling to 15 minutes
     return model, prompt, segment_duration
