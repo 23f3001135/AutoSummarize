@@ -1,63 +1,93 @@
-# ==============================================================================
-# File: processing/gemini_processor.py
-# Description: Contains the async Gemini API logic.
-# ==============================================================================
 import os
-import asyncio
 import logging
+import asyncio
 from pathlib import Path
-
+# Corrected import based on the new SDK guidelines
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
-# Load environment variables at the module level
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-async def generate(fileName: Path, prompt: str, model: str) -> str:
+# --- New Modular Functions ---
+
+async def _upload_file_async(client: genai.Client, file_path: Path) -> types.File:
     """
-    Generates content based on a prompt and a file using the Gemini API.
+    Uploads a file asynchronously to the Gemini server.
     """
-    logger.info(f"Starting async content generation with model: '{model}'")
+    logger.info(f"Starting async file upload for: {file_path.name}")
+    # Corrected to use the asynchronous 'a_upload' method
+    file = client.files.upload(file=file_path)
+    logger.info(f"Async upload complete for {file_path.name}. URI: {file.uri}")
+    return file
+
+async def _wait_for_processing_async(client: genai.Client, file: types.File) -> types.File:
+    """
+    Waits asynchronously for the file to become ACTIVE.
+    """
+    logger.info(f"Waiting for file '{file.name}' to be processed...")
+    while file.state.name == "PROCESSING":
+        await asyncio.sleep(5)  # Non-blocking wait
+        # Get the latest status of the file asynchronously
+        file = client.files.get(name=file.name)
+        logger.info(f"Current file state for '{file.name}': {file.state.name}")
+
+    if file.state.name == "FAILED":
+        logger.error(f"File processing failed: {file.error}")
+        raise ValueError(f"File processing failed: {file.error}")
+
+    if file.state.name == "ACTIVE":
+        logger.info(f"File '{file.name}' is now ACTIVE and ready to use. ✅")
+    return file
+
+async def _generate_content_async(client: genai.Client, model: str, prompt: str, file: types.File) -> str:
+    """
+    Generates the summary content asynchronously using the processed file.
+    """
+    logger.info("Sending request to the model for content generation...")
+    # Generate content asynchronously
+    response = client.models.generate_content(
+        model=model,
+        contents=[prompt, file],
+    )
+    logger.info("Successfully received response from the model. 🤖")
+    logger.debug(f"Full response object: {response}")
+    return response.text
+
+# --- Main Orchestrator Function ---
+
+async def generate_async(fileName: Path, prompt: str, model: str) -> str:
+    """
+    Orchestrates the entire summarization process asynchronously.
+    """
+    logger.info(f"Starting content generation process for '{fileName.name}' with model '{model}'")
     
-    # Configure the Gemini client with the API key
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY not found in environment variables.")
-    genai.configure(api_key=api_key)
-
-    logger.info(f"Uploading file '{fileName}' to Gemini...")
-    # The SDK's upload_file is synchronous, so we run it in a separate thread
-    # to avoid blocking the asyncio event loop.
-    file = await asyncio.to_thread(genai.upload_file, path=fileName)
-    logger.info(f"File uploaded successfully. URI: {file.uri}")
+        
+    client = genai.Client(api_key=api_key)
+    file = None
 
     try:
-        logger.info("Waiting for file to be processed...")
-        while file.state.name == "PROCESSING":
-            await asyncio.sleep(10) # Non-blocking sleep
-            file = await asyncio.to_thread(genai.get_file, name=file.name)
-            logger.info(f"Current file state: {file.state.name}")
+        # Step 1: Upload the file asynchronously
+        file = await _upload_file_async(client, fileName)
 
-        if file.state.name == "FAILED":
-            logger.error(f"File processing failed. State: {file.state.name}")
-            raise ValueError("Gemini API failed to process the file.")
-        
-        logger.info("File is now ACTIVE and ready to use. ✅")
-        
-        generation_model = genai.GenerativeModel(model_name=model)
-        logger.info("Sending request to the model for content generation...")
-        
-        response = await asyncio.to_thread(
-            generation_model.generate_content,
-            [prompt, file],
-        )
-        
-        logger.info("Successfully received response from the model. 🤖")
-        return response.text
+        # Step 2: Wait for the file to be processed asynchronously
+        file = await _wait_for_processing_async(client, file)
 
+        # Step 3: Generate the summary asynchronously
+        summary = await _generate_content_async(client, model, prompt, file)
+        return summary
+
+    except Exception as e:
+        logger.error(f"An error occurred during the generation process: {e}", exc_info=True)
+        raise e
+        
     finally:
-        # Ensure the file is deleted from Gemini's servers even if an error occurs
-        logger.info(f"Deleting file {file.name} from Gemini server...")
-        await asyncio.to_thread(genai.delete_file, name=file.name)
-        logger.info("Gemini file deleted.")
+        # Step 4: Clean up the file on the Gemini server asynchronously
+        if file:
+            logger.info(f"Deleting file {file.name} from Gemini server...")
+            client.files.delete(name=file.name)
+            logger.info(f"File {file.name} deleted successfully.")
