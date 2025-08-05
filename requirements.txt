@@ -2,5 +2,4 @@ flask
 python-dotenv
 google-genai
 werkzeug
-moviepy
 gunicorn

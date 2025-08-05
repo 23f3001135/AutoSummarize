@@ -13,13 +13,30 @@
         .prose pre { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; white-space: pre-wrap; word-wrap: break-word; }
         .progress-bar-container { background-color: #e5e7eb; border-radius: 9999px; overflow: hidden; }
         .progress-bar { background-color: #4f46e5; height: 100%; transition: width 0.5s ease-in-out; }
+        .tab-button { cursor: pointer; transition: all 0.2s ease-in-out; }
+        .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
+        .tab-content { max-height: 500px; overflow-y: auto; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-2xl mx-auto p-4 sm:p-8">
+    <div class="w-full max-w-4xl mx-auto p-4 sm:p-8">
+        <!-- Navigation Bar -->
+        <nav class="mb-8">
+            <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-1">
+                <div class="flex space-x-1">
+                    <a href="/" class="flex-1 text-center py-2 px-4 rounded-md bg-indigo-600 text-white font-medium transition-colors">
+                        Home
+                    </a>
+                    <a href="/history" class="flex-1 text-center py-2 px-4 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium transition-colors">
+                        History
+                    </a>
+                </div>
+            </div>
+        </nav>
+        
         <header class="text-center mb-8">
             <h1 class="text-4xl font-bold text-slate-900">Auto-Summarizer</h1>
-            <p class="text-slate-600 mt-2">Upload your call recording to generate a professional meeting summary.</p>
+            <p class="text-slate-600 mt-2">Upload your call recording to generate a professional meeting summary and full transcript.</p>
         </header>
         <main class="bg-white p-6 sm:p-8 rounded-xl shadow-lg">
             <div id="upload-container">
@@ -45,9 +62,27 @@
                     <p id="status-text" class="text-sm text-slate-600 mt-2 text-center">Initializing...</p>
                 </div>
 
-                <div id="summary-output" class="hidden mt-4 prose max-w-none">
-                    <h3 class="text-lg font-semibold mb-2 text-slate-900">Meeting Summary</h3>
-                    <pre id="summary-text" class="text-sm text-slate-700"></pre>
+                <div id="summary-output" class="hidden mt-4">
+                    <!-- Tab Navigation -->
+                    <div class="border-b border-slate-200 mb-4">
+                        <nav class="-mb-px flex space-x-8">
+                            <button id="summary-tab" class="tab-button py-2 px-1 border-b-2 border-indigo-500 font-medium text-sm text-indigo-600">
+                                Meeting Summary
+                            </button>
+                            <button id="transcript-tab" class="tab-button py-2 px-1 border-b-2 border-transparent font-medium text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300">
+                                Full Transcript
+                            </button>
+                        </nav>
+                    </div>
+                    
+                    <!-- Tab Content -->
+                    <div id="summary-content" class="tab-content prose max-w-none">
+                        <pre id="summary-text" class="text-sm text-slate-700 whitespace-pre-wrap"></pre>
+                    </div>
+                    
+                    <div id="transcript-content" class="tab-content hidden prose max-w-none">
+                        <pre id="transcript-text" class="text-sm text-slate-700 whitespace-pre-wrap"></pre>
+                    </div>
                 </div>
                  <div id="error-output" class="hidden mt-4 p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
                     <h3 class="text-lg font-semibold mb-2 text-red-900">An Error Occurred</h3>
@@ -71,11 +106,40 @@
         
         const summaryOutput = document.getElementById('summary-output');
         const summaryText = document.getElementById('summary-text');
+        const transcriptText = document.getElementById('transcript-text');
+        
+        // Tab elements
+        const summaryTab = document.getElementById('summary-tab');
+        const transcriptTab = document.getElementById('transcript-tab');
+        const summaryContent = document.getElementById('summary-content');
+        const transcriptContent = document.getElementById('transcript-content');
+        
         const errorOutput = document.getElementById('error-output');
         const errorText = document.getElementById('error-text');
         const resetButton = document.getElementById('reset-button');
 
         let pollingInterval;
+
+        // Tab switching functionality
+        function switchTab(activeTab, activeContent) {
+            // Reset all tabs
+            [summaryTab, transcriptTab].forEach(tab => {
+                tab.classList.remove('border-indigo-500', 'text-indigo-600');
+                tab.classList.add('border-transparent', 'text-slate-500');
+            });
+            [summaryContent, transcriptContent].forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // Activate selected tab
+            activeTab.classList.remove('border-transparent', 'text-slate-500');
+            activeTab.classList.add('border-indigo-500', 'text-indigo-600');
+            activeContent.classList.remove('hidden');
+        }
+
+        // Tab event listeners
+        summaryTab.addEventListener('click', () => switchTab(summaryTab, summaryContent));
+        transcriptTab.addEventListener('click', () => switchTab(transcriptTab, transcriptContent));
 
         // Drag and Drop & File Input listeners
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -146,10 +210,13 @@
 
                 if (data.status === 'COMPLETED') {
                     clearInterval(pollingInterval);
-                    summaryText.textContent = data.summary;
+                    summaryText.textContent = data.summary || 'No summary available';
+                    transcriptText.textContent = data.transcript || 'No transcript available';
                     statusArea.classList.add('hidden');
                     summaryOutput.classList.remove('hidden');
                     resetButton.classList.remove('hidden');
+                    // Default to summary tab
+                    switchTab(summaryTab, summaryContent);
                 } else if (data.status === 'FAILED') {
                     clearInterval(pollingInterval);
                     showError(data.error);
