@@ -2,5 +2,5 @@ flask
 python-dotenv
 google-genai
 werkzeug
-celery
-redis
+moviepy
+gunicorn

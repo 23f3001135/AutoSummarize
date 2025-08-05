@@ -1,0 +1,28 @@
+# Python virtual environment
+.venv
+venv
+env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment-specific files
+.env
+
+# IDE and editor directories
+.vscode/
+.idea/
+
+# Git directory
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+compose.yml
+
+# Temporary files and logs
+temporary_uploads/
+*.log

@@ -1,0 +1,15 @@
+services:
+  web:
+    image: namanaarzoo/autosummarize-web:v1.0_beta
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/app
+      - uploads-data:/app/temporary_uploads
+volumes:
+  uploads-data:

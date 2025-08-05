@@ -23,7 +23,7 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'temporary_uploads'
-app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1 Gigabyte
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024 * 5  # 5 Gigabytes
 
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -104,7 +104,5 @@ def get_status(job_id):
         # Return a copy of the job dictionary
         return jsonify(job)
 
-if __name__ == '__main__':
-    # Note: The user mentioned port 69. To run on that port:
-    # flask run --host=0.0.0.0 --port=69
-    app.run(debug=True, host='0.0.0.0', port=6969)
+# if __name__ == '__main__':
+#     app.run(debug=True, host='0.0.0.0', port=8080)

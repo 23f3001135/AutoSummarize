@@ -2,6 +2,8 @@ import os
 import logging
 import asyncio
 from pathlib import Path
+from typing import Optional, Any
+
 # Corrected import based on the new SDK guidelines
 from google import genai
 from google.genai import types
@@ -18,6 +20,7 @@ async def _upload_file_async(client: genai.Client, file_path: Path) -> types.Fil
     """
     logger.info(f"Starting async file upload for: {file_path.name}")
     # Corrected to use the asynchronous 'a_upload' method
+    await asyncio.sleep(10)
     file = client.files.upload(file=file_path)
     logger.info(f"Async upload complete for {file_path.name}. URI: {file.uri}")
     return file
@@ -39,46 +42,97 @@ async def _wait_for_processing_async(client: genai.Client, file: types.File) -> 
 
     if file.state.name == "ACTIVE":
         logger.info(f"File '{file.name}' is now ACTIVE and ready to use. ✅")
-    return file
+        return file
+    else:
+        logger.error(f"Unexpected file state: {file.state.name}")
+        raise ValueError(f"Unexpected file state: {file.state.name}")
 
-async def _generate_content_async(client: genai.Client, model: str, prompt: str, file: types.File) -> str:
+async def _generate_content_async(
+    client: genai.Client, 
+    model: str, 
+    prompt: str, 
+    file: Optional[types.File] = None, 
+    text_content: Optional[str] = None
+) -> str:
     """
-    Generates the summary content asynchronously using the processed file.
+    Generates content asynchronously from either a processed file or raw text.
     """
     logger.info("Sending request to the model for content generation...")
-    # Generate content asynchronously
+    
+    contents: list[Any] = [prompt]
+    if file:
+        contents.append(file)
+    elif text_content:
+        contents.append(text_content)
+    else:
+        raise ValueError("Either a file or text_content must be provided.")
+
+    await asyncio.sleep(10) # wait before sending request
     response = client.models.generate_content(
         model=model,
-        contents=[prompt, file],
+        contents=contents,
     )
     logger.info("Successfully received response from the model. 🤖")
     logger.debug(f"Full response object: {response}")
-    return response.text
+    return response.text or ""
+
+async def transcribe_chunk_async(client: genai.Client, model: str, prompt: str, chunk_path: Path) -> str:
+    """
+    Uploads, transcribes, and deletes a single audio chunk.
+    """
+    file = None
+    try:
+        logger.info(f"Transcribing chunk: {chunk_path.name}")
+        file = await _upload_file_async(client, chunk_path)
+        file = await _wait_for_processing_async(client, file)
+        
+        # Use the content generation function with the transcription prompt
+        transcript = await _generate_content_async(client, model, prompt, file=file)
+        
+        logger.info(f"Successfully transcribed chunk: {chunk_path.name}")
+        return transcript
+    finally:
+        if file:
+            logger.info(f"Deleting chunk {file.name} from Gemini server...")
+            client.files.delete(name=file.name)
+            logger.info(f"Chunk {file.name} deleted successfully.")
 
 # --- Main Orchestrator Function ---
 
-async def generate_async(fileName: Path, prompt: str, model: str) -> str:
+async def generate_async(
+    model: str, 
+    prompt: str, 
+    file_path: Optional[Path] = None, 
+    transcript_text: Optional[str] = None
+) -> str:
     """
     Orchestrates the entire summarization process asynchronously.
+    Can summarize based on a file upload or on pre-existing text.
     """
-    logger.info(f"Starting content generation process for '{fileName.name}' with model '{model}'")
-    
+    if file_path:
+        logger.info(f"Starting content generation process for '{file_path.name}' with model '{model}'")
+    elif transcript_text:
+        logger.info(f"Starting content generation from text with model '{model}'")
+    else:
+        raise ValueError("Either file_path or transcript_text must be provided.")
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY not found in environment variables.")
         
     client = genai.Client(api_key=api_key)
-    file = None
+    file: Optional[types.File] = None
 
     try:
-        # Step 1: Upload the file asynchronously
-        file = await _upload_file_async(client, fileName)
-
-        # Step 2: Wait for the file to be processed asynchronously
-        file = await _wait_for_processing_async(client, file)
-
-        # Step 3: Generate the summary asynchronously
-        summary = await _generate_content_async(client, model, prompt, file)
+        if file_path:
+            # Scenario 1: Summarize from a file
+            file = await _upload_file_async(client, file_path)
+            file = await _wait_for_processing_async(client, file)
+            summary = await _generate_content_async(client, model, prompt, file=file)
+        else:
+            # Scenario 2: Summarize from a transcript
+            summary = await _generate_content_async(client, model, prompt, text_content=transcript_text)
+        
         return summary
 
     except Exception as e:
@@ -86,7 +140,7 @@ async def generate_async(fileName: Path, prompt: str, model: str) -> str:
         raise e
         
     finally:
-        # Step 4: Clean up the file on the Gemini server asynchronously
+        # Clean up the file on the Gemini server if one was uploaded
         if file:
             logger.info(f"Deleting file {file.name} from Gemini server...")
             client.files.delete(name=file.name)
