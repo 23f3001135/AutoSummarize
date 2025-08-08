@@ -1,6 +1,6 @@
 services:
   web:
-    image: namanaarzoo/autosummarize-web:v1.0_beta
+    image: namanaarzoo/autosummarize-web:v2.0_beta
     build:
       context: .
       dockerfile: Dockerfile

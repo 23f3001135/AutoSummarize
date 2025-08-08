@@ -1,0 +1,447 @@
+
+{% extends "base.html" %}
+
+{% block title %}Settings - AutoSummarize{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .settings-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .settings-form {
+        background: var(--card-bg);
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    .settings-section {
+        margin-bottom: 40px;
+    }
+
+    .settings-section:last-child {
+        margin-bottom: 0;
+    }
+
+    .section-title {
+        font-size: 1.3em;
+        font-weight: 600;
+        color: var(--primary-color);
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--primary-color);
+    }
+
+    .form-group {
+        margin-bottom: 25px;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 8px;
+        color: var(--text-color);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        font-size: 16px;
+        transition: all 0.3s ease;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .form-control::placeholder {
+        color: var(--text-muted);
+    }
+
+    .password-toggle-container {
+        position: relative;
+    }
+
+    .password-toggle {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px;
+        font-size: 18px;
+        transition: color 0.3s ease;
+    }
+
+    .password-toggle:hover {
+        color: var(--primary-color);
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+
+    .checkbox-input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--primary-color);
+    }
+
+    .checkbox-label {
+        font-weight: 500;
+        color: var(--text-color);
+        cursor: pointer;
+    }
+
+    .textarea-control {
+        min-height: 120px;
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .btn-save {
+        background: linear-gradient(135deg, var(--primary-color), #2563eb);
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-save:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-save:active {
+        transform: translateY(0);
+    }
+
+    .form-hint {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-top: 5px;
+    }
+
+    .model-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 10px;
+    }
+
+    .model-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--input-bg);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .model-option:hover {
+        border-color: var(--primary-color);
+    }
+
+    .model-option.selected {
+        border-color: var(--primary-color);
+        background: rgba(59, 130, 246, 0.1);
+    }
+
+    .model-radio {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--primary-color);
+    }
+
+    .model-name {
+        font-weight: 500;
+        color: var(--text-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="settings-container">
+    todo: revert settings page to previous version (which looked better)
+    <div class="settings-form">
+        <form id="settingsForm" action="/save_settings" method="POST">
+            <!-- API Configuration Section -->
+            <div class="settings-section">
+                <h2 class="section-title">API Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="gemini_api_key" class="form-label">Gemini API Key</label>
+                    <div class="password-toggle-container">
+                        <input 
+                            type="password" 
+                            id="gemini_api_key" 
+                            name="gemini_api_key" 
+                            class="form-control" 
+                            placeholder="Enter your Gemini API key"
+                            value="{{ config.GEMINI_API_KEY if config.GEMINI_API_KEY else '' }}"
+                        >
+                        <button type="button" class="password-toggle" onclick="togglePassword('gemini_api_key')">
+                            👁️
+                        </button>
+                    </div>
+                    <div class="form-hint">
+                        Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" style="color: var(--primary-color);">Google AI Studio</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Configuration Section -->
+            <div class="settings-section">
+                <h2 class="section-title">Model Configuration</h2>
+                
+                <div class="form-group">
+                    <label class="form-label">Select Model</label>
+                    <div class="model-grid">
+                        <div class="model-option {% if config.MODEL_NAME == 'gemini-1.5-flash' %}selected{% endif %}" onclick="selectModel('gemini-1.5-flash')">
+                            <input type="radio" name="model_name" value="gemini-1.5-flash" class="model-radio" {% if config.MODEL_NAME == 'gemini-1.5-flash' %}checked{% endif %}>
+                            <span class="model-name">Gemini 1.5 Flash</span>
+                        </div>
+                        <div class="model-option {% if config.MODEL_NAME == 'gemini-1.5-pro' %}selected{% endif %}" onclick="selectModel('gemini-1.5-pro')">
+                            <input type="radio" name="model_name" value="gemini-1.5-pro" class="model-radio" {% if config.MODEL_NAME == 'gemini-1.5-pro' %}checked{% endif %}>
+                            <span class="model-name">Gemini 1.5 Pro</span>
+                        </div>
+                    </div>
+                    <div class="form-hint">
+                        Flash model is faster and cheaper, Pro model provides higher quality results
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prompt Configuration Section -->
+            <div class="settings-section">
+                <h2 class="section-title">Prompt Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="summary_prompt" class="form-label">Summary Prompt</label>
+                    <textarea 
+                        id="summary_prompt" 
+                        name="summary_prompt" 
+                        class="form-control textarea-control" 
+                        placeholder="Enter your custom summary prompt..."
+                    >{{ config.SUMMARY_PROMPT if config.SUMMARY_PROMPT else '' }}</textarea>
+                    <div class="form-hint">
+                        Customize how the AI summarizes your content. Leave empty to use default prompt.
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="transcript_prompt" class="form-label">Transcript Prompt</label>
+                    <textarea 
+                        id="transcript_prompt" 
+                        name="transcript_prompt" 
+                        class="form-control textarea-control" 
+                        placeholder="Enter your custom transcript prompt..."
+                    >{{ config.TRANSCRIPT_PROMPT if config.TRANSCRIPT_PROMPT else '' }}</textarea>
+                    <div class="form-hint">
+                        Customize how the AI processes transcripts. Leave empty to use default prompt.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing Options Section -->
+            <div class="settings-section">
+                <h2 class="section-title">Processing Options</h2>
+                
+                <div class="checkbox-group">
+                    <input 
+                        type="checkbox" 
+                        id="auto_delete_files" 
+                        name="auto_delete_files" 
+                        class="checkbox-input"
+                        {% if config.AUTO_DELETE_FILES %}checked{% endif %}
+                    >
+                    <label for="auto_delete_files" class="checkbox-label">
+                        Automatically delete uploaded files after processing
+                    </label>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input 
+                        type="checkbox" 
+                        id="enable_notifications" 
+                        name="enable_notifications" 
+                        class="checkbox-input"
+                        {% if config.ENABLE_NOTIFICATIONS %}checked{% endif %}
+                    >
+                    <label for="enable_notifications" class="checkbox-label">
+                        Enable browser notifications when processing completes
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="max_file_size" class="form-label">Maximum File Size (MB)</label>
+                    <input 
+                        type="number" 
+                        id="max_file_size" 
+                        name="max_file_size" 
+                        class="form-control" 
+                        min="1" 
+                        max="500" 
+                        value="{{ config.MAX_FILE_SIZE if config.MAX_FILE_SIZE else 100 }}"
+                    >
+                    <div class="form-hint">
+                        Maximum allowed file size for uploads (1-500 MB)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="form-group">
+                <button type="submit" class="btn-save">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function togglePassword(fieldId) {
+        const field = document.getElementById(fieldId);
+        const button = field.nextElementSibling;
+        
+        if (field.type === 'password') {
+            field.type = 'text';
+            button.textContent = '🙈';
+        } else {
+            field.type = 'password';
+            button.textContent = '👁️';
+        }
+    }
+
+    function selectModel(modelName) {
+        // Remove selected class from all options
+        document.querySelectorAll('.model-option').forEach(option => {
+            option.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked option
+        const selectedOption = document.querySelector(`[onclick="selectModel('${modelName}')"]`);
+        selectedOption.classList.add('selected');
+        
+        // Check the radio button
+        document.querySelector(`input[value="${modelName}"]`).checked = true;
+    }
+
+    // Handle form submission
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const submitButton = this.querySelector('.btn-save');
+        const originalText = submitButton.textContent;
+        
+        // Show loading state
+        submitButton.textContent = 'Saving...';
+        submitButton.disabled = true;
+        
+        fetch('/save_settings', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showNotification('Settings saved successfully!', 'success');
+            } else {
+                showNotification('Error saving settings: ' + data.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error saving settings', 'error');
+        })
+        .finally(() => {
+            // Reset button state
+            submitButton.textContent = originalText;
+            submitButton.disabled = false;
+        });
+    });
+
+    function showNotification(message, type) {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        // Style the notification
+        Object.assign(notification.style, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            padding: '15px 20px',
+            borderRadius: '8px',
+            color: 'white',
+            fontWeight: '500',
+            zIndex: '9999',
+            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+            transform: 'translateX(100%)',
+            transition: 'transform 0.3s ease'
+        });
+        
+        if (type === 'success') {
+            notification.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+        } else {
+            notification.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        }
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            notification.style.transform = 'translateX(0)';
+        });
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 300);
+        }, 3000);
+    }
+
+    // Request notification permission on page load
+    if ('Notification' in window && Notification.permission === 'default') {
+        document.getElementById('enable_notifications').addEventListener('change', function() {
+            if (this.checked) {
+                Notification.requestPermission();
+            }
+        });
+    }
+</script>
+{% endblock %}

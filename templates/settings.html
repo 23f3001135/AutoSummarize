@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% set active_page = 'settings' %}
+
+{% block title %}Settings - Auto-Summarizer{% endblock %}
+
+{% block content %}
+<header class="text-center mb-8">
+    <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-100">Settings</h1>
+    <p class="text-slate-600 dark:text-slate-400 mt-2">Configure your AutoSummarizer preferences and API settings.</p>
+</header>
+
+<main class="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 sm:p-8 border border-slate-200 dark:border-slate-700">
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-8">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
+        <p class="text-slate-600 dark:text-slate-400">Loading settings...</p>
+    </div>
+
+    <!-- Settings Form -->
+    <form id="settings-form" class="hidden space-y-6">
+        <!-- Success/Error Messages -->
+        <div id="message-container"></div>
+
+        <!-- Model Selection -->
+        <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                AI Model
+            </label>
+            <div class="relative">
+                <button type="button" id="model-dropdown-button" class="w-full inline-flex justify-between items-center gap-x-1.5 rounded-lg bg-white dark:bg-slate-700 px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors">
+                    <span id="selected-model-text">Gemini 2.5 Flash (Recommended)</span>
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-slate-400 transition-transform duration-200" id="dropdown-arrow">
+                        <path d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" fill-rule="evenodd" />
+                    </svg>
+                </button>
+                
+                <div id="model-dropdown-menu" class="hidden absolute z-10 mt-2 w-full origin-top-right rounded-lg bg-white dark:bg-slate-700 shadow-lg ring-1 ring-black/5 dark:ring-slate-600 transition-all duration-200 transform opacity-0 scale-95">
+                    <div class="py-1">
+                        <button type="button" onclick="selectModel('gemini-2.5-flash', 'Gemini 2.5 Flash (Recommended)')" class="w-full text-left block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+                            <div class="flex items-center justify-between">
+                                <span>Gemini 2.5 Flash</span>
+                                <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Recommended</span>
+                            </div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Fast and efficient for most tasks</div>
+                        </button>
+                        <button type="button" onclick="selectModel('gemini-1.5-pro', 'Gemini 1.5 Pro')" class="w-full text-left block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+                            <div>Gemini 1.5 Pro</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Higher quality, slower processing</div>
+                        </button>
+                        <button type="button" onclick="selectModel('gemini-1.5-flash', 'Gemini 1.5 Flash')" class="w-full text-left block px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
+                            <div>Gemini 1.5 Flash</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Previous generation model</div>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Hidden input to store the actual value -->
+                <input type="hidden" id="model" name="model" value="gemini-2.5-flash">
+            </div>
+            <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Choose the AI model for processing your files.</p>
+        </div>
+
+        <!-- API Key -->
+        <div>
+            <label for="api_key" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Gemini API Key
+            </label>
+            <div class="relative">
+                <input type="password" id="api_key" name="api_key" class="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your Gemini API key">
+                <button type="button" id="toggle-api-key" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    <svg id="eye-icon" class="h-5 w-5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <svg id="eye-off-icon" class="h-5 w-5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                    </svg>
+                </button>
+            </div>
+            <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:underline">Google AI Studio</a>. Your API key is stored locally and never sent to our servers.
+            </p>
+        </div>
+
+        <!-- Max Duration -->
+        <div>
+            <label for="max_duration_seconds" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Chunking Threshold (seconds)
+            </label>
+            <input type="number" id="max_duration_seconds" name="max_duration_seconds" min="300" max="86400" step="60" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Files longer than this will be split into chunks. Recommended: 1800 (30 minutes).</p>
+        </div>
+
+        <!-- Summary Prompt -->
+        <div>
+            <label for="summary_prompt" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Summary Prompt
+            </label>
+            <textarea id="summary_prompt" name="summary_prompt" rows="6" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your custom summary prompt..."></textarea>
+            <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">This prompt guides how the AI creates meeting summaries.</p>
+        </div>
+
+        <!-- Transcription Prompt -->
+        <div>
+            <label for="transcription_prompt" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Transcription Prompt
+            </label>
+            <textarea id="transcription_prompt" name="transcription_prompt" rows="4" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your custom transcription prompt..."></textarea>
+            <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">This prompt guides how the AI transcribes audio content.</p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-col sm:flex-row gap-4 pt-6">
+            <button type="submit" id="save-btn" class="flex-1 bg-indigo-600 dark:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                Save Settings
+            </button>
+            <button type="button" id="reset-btn" class="flex-1 bg-slate-600 dark:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors">
+                Reset to Defaults
+            </button>
+        </div>
+    </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Elements
+    const loading = document.getElementById('loading');
+    const settingsForm = document.getElementById('settings-form');
+    const messageContainer = document.getElementById('message-container');
+    const saveBtn = document.getElementById('save-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const toggleApiKey = document.getElementById('toggle-api-key');
+    const eyeIcon = document.getElementById('eye-icon');
+    const eyeOffIcon = document.getElementById('eye-off-icon');
+    const apiKeyInput = document.getElementById('api_key');
+
+    // Dropdown elements
+    const dropdownButton = document.getElementById('model-dropdown-button');
+    const dropdownMenu = document.getElementById('model-dropdown-menu');
+    const dropdownArrow = document.getElementById('dropdown-arrow');
+    const selectedModelText = document.getElementById('selected-model-text');
+    const modelInput = document.getElementById('model');
+
+    // Load settings on page load
+    document.addEventListener('DOMContentLoaded', loadSettings);
+
+    // Form submission
+    settingsForm.addEventListener('submit', saveSettings);
+    resetBtn.addEventListener('click', resetToDefaults);
+
+    // Dropdown functionality
+    dropdownButton.addEventListener('click', toggleDropdown);
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!dropdownButton.contains(e.target) && !dropdownMenu.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    // API key visibility toggle
+    toggleApiKey.addEventListener('click', () => {
+        if (apiKeyInput.type === 'password') {
+            apiKeyInput.type = 'text';
+            eyeIcon.classList.add('hidden');
+            eyeOffIcon.classList.remove('hidden');
+        } else {
+            apiKeyInput.type = 'password';
+            eyeIcon.classList.remove('hidden');
+            eyeOffIcon.classList.add('hidden');
+        }
+    });
+
+    function toggleDropdown() {
+        const isOpen = !dropdownMenu.classList.contains('hidden');
+        if (isOpen) {
+            closeDropdown();
+        } else {
+            openDropdown();
+        }
+    }
+
+    function openDropdown() {
+        dropdownMenu.classList.remove('hidden');
+        setTimeout(() => {
+            dropdownMenu.classList.remove('opacity-0', 'scale-95');
+            dropdownMenu.classList.add('opacity-100', 'scale-100');
+            dropdownArrow.style.transform = 'rotate(180deg)';
+        }, 10);
+    }
+
+    function closeDropdown() {
+        dropdownMenu.classList.add('opacity-0', 'scale-95');
+        dropdownMenu.classList.remove('opacity-100', 'scale-100');
+        dropdownArrow.style.transform = 'rotate(0deg)';
+        setTimeout(() => {
+            dropdownMenu.classList.add('hidden');
+        }, 200);
+    }
+
+    function selectModel(value, displayText) {
+        modelInput.value = value;
+        selectedModelText.textContent = displayText;
+        closeDropdown();
+    }
+
+    async function loadSettings() {
+        try {
+            const response = await fetch('/api/settings');
+            if (!response.ok) {
+                throw new Error('Failed to load settings');
+            }
+            const settings = await response.json();
+            
+            // Populate form
+            const model = settings.model || 'gemini-2.5-flash';
+            modelInput.value = model;
+            
+            // Update dropdown display text
+            const modelTexts = {
+                'gemini-2.5-flash': 'Gemini 2.5 Flash (Recommended)',
+                'gemini-1.5-pro': 'Gemini 1.5 Pro',
+                'gemini-1.5-flash': 'Gemini 1.5 Flash'
+            };
+            selectedModelText.textContent = modelTexts[model] || 'Gemini 2.5 Flash (Recommended)';
+            
+            document.getElementById('max_duration_seconds').value = settings.max_duration_seconds || 1800;
+            document.getElementById('summary_prompt').value = settings.summary_prompt || '';
+            document.getElementById('transcription_prompt').value = settings.transcription_prompt || '';
+            
+            // Show placeholder for API key if it exists
+            if (settings.api_key) {
+                apiKeyInput.placeholder = '••••••••••••••••••••••••••••••••';
+            }
+            
+            loading.classList.add('hidden');
+            settingsForm.classList.remove('hidden');
+            
+        } catch (err) {
+            showMessage('Failed to load settings: ' + err.message, 'error');
+            loading.classList.add('hidden');
+            settingsForm.classList.remove('hidden');
+        }
+    }
+
+    async function saveSettings(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(settingsForm);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Show loading state
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to save settings');
+            }
+            
+            showMessage('Settings saved successfully!', 'success');
+            
+            // Update placeholder if API key was set
+            if (data.api_key) {
+                apiKeyInput.value = '';
+                apiKeyInput.placeholder = '••••••••••••••••••••••••••••••••';
+            }
+            
+        } catch (err) {
+            showMessage('Failed to save settings: ' + err.message, 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Settings';
+        }
+    }
+
+    async function resetToDefaults() {
+        if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+            return;
+        }
+        
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Resetting...';
+        
+        try {
+            const response = await fetch('/api/settings/reset', {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to reset settings');
+            }
+            
+            showMessage('Settings reset to defaults successfully!', 'success');
+            
+            // Reload settings
+            setTimeout(() => {
+                loadSettings();
+            }, 1000);
+            
+        } catch (err) {
+            showMessage('Failed to reset settings: ' + err.message, 'error');
+        } finally {
+            resetBtn.disabled = false;
+            resetBtn.textContent = 'Reset to Defaults';
+        }
+    }
+
+    function showMessage(message, type) {
+        const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+        
+        messageContainer.innerHTML = `
+            <div class="alert ${alertClass}">
+                ${message}
+            </div>
+        `;
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            messageContainer.innerHTML = '';
+        }, 5000);
+    }
+</script>
+{% endblock %}

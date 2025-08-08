@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}History - Auto-Summarizer{% endblock %}
+
+{% block extra_styles %}
+.tab-button { cursor: pointer; transition: all 0.2s ease-in-out; }
+.tab-content { max-height: 400px; overflow-y: auto; }
+.job-card { 
+    transition: all 0.2s ease-in-out; 
+}
+.job-card:hover { 
+    transform: translateY(-2px); 
+}
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-8">
+    <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-100">Job History</h1>
+    <p class="text-slate-600 dark:text-slate-300 mt-2">View all your previous summarization jobs and results.</p>
+</header>
+
+<main class="bg-white dark:bg-slate-800 rounded-xl shadow-lg transition-colors">
+    <!-- Search and Filter Bar -->
+    <div class="p-6 border-b border-slate-200 dark:border-slate-700">
+        <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex-1">
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    placeholder="Search jobs..." 
+                    class="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                >
+            </div>
+            <div class="flex gap-2">
+                <select id="status-filter" class="px-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors">
+                    <option value="">All Status</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="FAILED">Failed</option>
+                    <option value="PROCESSING">Processing</option>
+                </select>
+                <button id="refresh-btn" class="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors">
+                    Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading" class="p-8 text-center">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p class="text-slate-600 dark:text-slate-300">Loading job history...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error" class="hidden p-8 text-center">
+        <div class="text-red-600 dark:text-red-400 mb-4">
+            <svg class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+        </div>
+        <p class="text-slate-600 dark:text-slate-300" id="error-message">Failed to load job history.</p>
+        <button onclick="loadHistory()" class="mt-4 px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors">
+            Try Again
+        </button>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty" class="hidden p-8 text-center">
+        <div class="text-slate-400 dark:text-slate-500 mb-4">
+            <svg class="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+        </div>
+        <p class="text-slate-600 dark:text-slate-300 mb-4">No jobs found.</p>
+        <a href="/" class="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors">
+            Create Your First Summary
+        </a>
+    </div>
+
+    <!-- Jobs List -->
+    <div id="jobs-container" class="hidden">
+        <div id="jobs-list" class="divide-y divide-slate-200 dark:divide-slate-700">
+            <!-- Jobs will be populated here -->
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block modals %}
+{% include 'components/modals/job_modal.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let allJobs = [];
+    let filteredJobs = [];
+
+    // DOM elements
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error');
+    const empty = document.getElementById('empty');
+    const jobsContainer = document.getElementById('jobs-container');
+    const jobsList = document.getElementById('jobs-list');
+    const searchInput = document.getElementById('search-input');
+    const statusFilter = document.getElementById('status-filter');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    // Load history on page load
+    document.addEventListener('DOMContentLoaded', loadHistory);
+
+    // Event listeners
+    refreshBtn.addEventListener('click', loadHistory);
+    searchInput.addEventListener('input', filterJobs);
+    statusFilter.addEventListener('change', filterJobs);
+
+    async function loadHistory() {
+        showLoading();
+        try {
+            const response = await fetch('/api/history');
+            if (!response.ok) {
+                throw new Error('Failed to load history');
+            }
+            const data = await response.json();
+            allJobs = data.jobs || [];
+            filteredJobs = [...allJobs];
+            renderJobs();
+        } catch (err) {
+            showError(err.message);
+        }
+    }
+
+    function showLoading() {
+        loading.classList.remove('hidden');
+        error.classList.add('hidden');
+        empty.classList.add('hidden');
+        jobsContainer.classList.add('hidden');
+    }
+
+    function showError(message) {
+        loading.classList.add('hidden');
+        error.classList.remove('hidden');
+        empty.classList.add('hidden');
+        jobsContainer.classList.add('hidden');
+        document.getElementById('error-message').textContent = message;
+    }
+
+    function showEmpty() {
+        loading.classList.add('hidden');
+        error.classList.add('hidden');
+        empty.classList.remove('hidden');
+        jobsContainer.classList.add('hidden');
+    }
+
+    function showJobs() {
+        loading.classList.add('hidden');
+        error.classList.add('hidden');
+        empty.classList.add('hidden');
+        jobsContainer.classList.remove('hidden');
+    }
+
+    function filterJobs() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const statusTerm = statusFilter.value;
+
+        filteredJobs = allJobs.filter(job => {
+            const matchesSearch = !searchTerm || 
+                (job.summary && job.summary.toLowerCase().includes(searchTerm)) ||
+                (job.transcript && job.transcript.toLowerCase().includes(searchTerm)) ||
+                (job.id && job.id.toLowerCase().includes(searchTerm));
+            
+            const matchesStatus = !statusTerm || job.status === statusTerm;
+            
+            return matchesSearch && matchesStatus;
+        });
+
+        renderJobs();
+    }
+
+    function renderJobs() {
+        if (filteredJobs.length === 0) {
+            showEmpty();
+            return;
+        }
+
+        showJobs();
+        jobsList.innerHTML = filteredJobs.map(job => createJobCard(job)).join('');
+    }
+
+    function createJobCard(job) {
+        const statusClass = getStatusClass(job.status);
+        const preview = job.summary ? job.summary.substring(0, 150) + '...' : 'No summary available';
+        const createdAt = job.id ? new Date(parseInt(job.id.split('-')[0]) || Date.now()).toLocaleString() : 'Unknown';
+
+        return `
+            <div class="job-card p-6 cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-200 dark:border-slate-700 transition-colors" onclick="openJobModal('${job.id}')">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex items-center gap-3">
+                        <span class="status-badge ${statusClass}">${job.status}</span>
+                        <span class="text-sm text-slate-500 dark:text-slate-400">${createdAt}</span>
+                    </div>
+                    <button class="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="text-sm text-slate-600 dark:text-slate-300">
+                    <strong>Job ID:</strong> <span class="font-mono">${job.id}</span>
+                </div>
+                <div class="mt-3 text-sm text-slate-700 dark:text-slate-300">
+                    ${preview}
+                </div>
+            </div>
+        `;
+    }
+</script>
+{% endblock %}

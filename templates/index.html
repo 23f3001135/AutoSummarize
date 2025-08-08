@@ -1,255 +1,460 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto-Summarizer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        @import url('https://rsms.me/inter/inter.css');
-        .drop-zone { border: 2px dashed #cbd5e1; transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out; }
-        .drop-zone.drag-over { background-color: #e2e8f0; border-color: #4f46e5; }
-        .prose pre { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; white-space: pre-wrap; word-wrap: break-word; }
-        .progress-bar-container { background-color: #e5e7eb; border-radius: 9999px; overflow: hidden; }
-        .progress-bar { background-color: #4f46e5; height: 100%; transition: width 0.5s ease-in-out; }
-        .tab-button { cursor: pointer; transition: all 0.2s ease-in-out; }
-        .tab-button.active { border-color: #4f46e5; color: #4f46e5; }
-        .tab-content { max-height: 500px; overflow-y: auto; }
-    </style>
-</head>
-<body class="bg-slate-50 text-slate-800 flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-4xl mx-auto p-4 sm:p-8">
-        <!-- Navigation Bar -->
-        <nav class="mb-8">
-            <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-1">
-                <div class="flex space-x-1">
-                    <a href="/" class="flex-1 text-center py-2 px-4 rounded-md bg-indigo-600 text-white font-medium transition-colors">
-                        Home
-                    </a>
-                    <a href="/history" class="flex-1 text-center py-2 px-4 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium transition-colors">
-                        History
-                    </a>
-                </div>
-            </div>
-        </nav>
-        
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-slate-900">Auto-Summarizer</h1>
-            <p class="text-slate-600 mt-2">Upload your call recording to generate a professional meeting summary and full transcript.</p>
-        </header>
-        <main class="bg-white p-6 sm:p-8 rounded-xl shadow-lg">
-            <div id="upload-container">
-                <form id="upload-form" enctype="multipart/form-data">
-                    <div id="drop-zone" class="relative w-full h-48 rounded-lg flex flex-col items-center justify-center text-center cursor-pointer">
-                        <input type="file" id="file-input" name="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="audio/*,video/*">
-                        <div class="space-y-2">
-                            <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                            <p class="text-sm text-slate-600"><span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop</p>
-                            <p id="file-name" class="text-xs text-slate-500"></p>
-                        </div>
-                    </div>
-                    <button type="submit" id="submit-button" class="mt-6 w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">Generate Summary</button>
-                </form>
-            </div>
-            
-            <div id="result-container" class="hidden mt-6">
-                <div id="status-area">
-                    <h3 class="text-lg font-semibold text-slate-900 mb-2">Processing Job</h3>
-                    <div class="progress-bar-container w-full h-2.5">
-                        <div id="progress-bar" class="progress-bar" style="width: 0%;"></div>
-                    </div>
-                    <p id="status-text" class="text-sm text-slate-600 mt-2 text-center">Initializing...</p>
-                </div>
+{% extends "base.html" %}
 
-                <div id="summary-output" class="hidden mt-4">
-                    <!-- Tab Navigation -->
-                    <div class="border-b border-slate-200 mb-4">
-                        <nav class="-mb-px flex space-x-8">
-                            <button id="summary-tab" class="tab-button py-2 px-1 border-b-2 border-indigo-500 font-medium text-sm text-indigo-600">
-                                Meeting Summary
-                            </button>
-                            <button id="transcript-tab" class="tab-button py-2 px-1 border-b-2 border-transparent font-medium text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300">
-                                Full Transcript
-                            </button>
-                        </nav>
-                    </div>
-                    
-                    <!-- Tab Content -->
-                    <div id="summary-content" class="tab-content prose max-w-none">
-                        <pre id="summary-text" class="text-sm text-slate-700 whitespace-pre-wrap"></pre>
-                    </div>
-                    
-                    <div id="transcript-content" class="tab-content hidden prose max-w-none">
-                        <pre id="transcript-text" class="text-sm text-slate-700 whitespace-pre-wrap"></pre>
-                    </div>
+{% set active_page = 'upload' %}
+
+{% block title %}Auto-Summarizer{% endblock %}
+
+{% block content %}
+<!-- Add Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+
+<!-- Enhanced Progress Bar Animations -->
+<style>
+    @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+    }
+    
+    .animate-shimmer {
+        animation: shimmer 2s infinite;
+    }
+    
+    #progress-bar {
+        position: relative;
+        background: linear-gradient(45deg, 
+            #4f46e5 0%, 
+            #6366f1 25%, 
+            #8b5cf6 50%, 
+            #6366f1 75%, 
+            #4f46e5 100%);
+        background-size: 200% 100%;
+        transition: all 0.7s ease-out;
+        border-radius: inherit;
+    }
+    
+    @keyframes gradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+    
+    .dark #progress-bar {
+        background: linear-gradient(45deg, 
+            #6366f1 0%, 
+            #8b5cf6 25%, 
+            #a855f7 50%, 
+            #8b5cf6 75%, 
+            #6366f1 100%);
+        background-size: 200% 100%;
+    }
+    
+    #status-text {
+        transition: all 0.3s ease-out;
+    }
+</style>
+
+<header class="text-center mb-8">
+    <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-100">Auto-Summarizer</h1>
+    <p class="text-slate-600 dark:text-slate-400 mt-2">Upload your call recording to generate a professional meeting summary and full transcript.</p>
+</header>
+
+<main class="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
+    <div id="upload-container">
+        <form id="upload-form" enctype="multipart/form-data">
+            <div id="drop-zone" class="relative w-full h-48 rounded-lg flex flex-col items-center justify-center text-center cursor-pointer border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 drop-zone">
+                <input type="file" id="file-input" name="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="audio/*,video/*">
+                <div class="space-y-2">
+                    <svg class="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <p class="text-sm text-slate-600 dark:text-slate-400">
+                        <span class="font-semibold text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
+                    </p>
+                    <p id="file-name" class="text-xs text-slate-500 dark:text-slate-400"></p>
                 </div>
-                 <div id="error-output" class="hidden mt-4 p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-                    <h3 class="text-lg font-semibold mb-2 text-red-900">An Error Occurred</h3>
-                    <p id="error-text" class="text-sm"></p>
-                </div>
-                <button id="reset-button" class="hidden mt-6 w-full bg-slate-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-700">Summarize Another File</button>
             </div>
-        </main>
+            <button type="submit" id="submit-button" class="mt-6 w-full bg-indigo-600 dark:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                Generate Summary
+            </button>
+        </form>
     </div>
-    <script>
-        const uploadContainer = document.getElementById('upload-container');
-        const resultContainer = document.getElementById('result-container');
-        const uploadForm = document.getElementById('upload-form');
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const fileNameDisplay = document.getElementById('file-name');
-        
-        const statusArea = document.getElementById('status-area');
-        const progressBar = document.getElementById('progress-bar');
-        const statusText = document.getElementById('status-text');
-        
-        const summaryOutput = document.getElementById('summary-output');
-        const summaryText = document.getElementById('summary-text');
-        const transcriptText = document.getElementById('transcript-text');
-        
-        // Tab elements
-        const summaryTab = document.getElementById('summary-tab');
-        const transcriptTab = document.getElementById('transcript-tab');
-        const summaryContent = document.getElementById('summary-content');
-        const transcriptContent = document.getElementById('transcript-content');
-        
-        const errorOutput = document.getElementById('error-output');
-        const errorText = document.getElementById('error-text');
-        const resetButton = document.getElementById('reset-button');
-
-        let pollingInterval;
-
-        // Tab switching functionality
-        function switchTab(activeTab, activeContent) {
-            // Reset all tabs
-            [summaryTab, transcriptTab].forEach(tab => {
-                tab.classList.remove('border-indigo-500', 'text-indigo-600');
-                tab.classList.add('border-transparent', 'text-slate-500');
-            });
-            [summaryContent, transcriptContent].forEach(content => {
-                content.classList.add('hidden');
-            });
+    
+    <div id="result-container" class="hidden mt-6">
+        <div id="status-area">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Processing Job</h3>
+            <p id="job-id-display" class="text-xs text-slate-500 dark:text-slate-400 mb-3 font-mono"></p>
             
-            // Activate selected tab
-            activeTab.classList.remove('border-transparent', 'text-slate-500');
-            activeTab.classList.add('border-indigo-500', 'text-indigo-600');
-            activeContent.classList.remove('hidden');
+            <!-- Enhanced Progress Bar Container -->
+            <div class="relative w-full h-4 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden shadow-inner">
+                <!-- Background shine effect -->
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"></div>
+                
+                <!-- Main Progress Bar -->
+                <div id="progress-bar" class="relative h-full bg-gradient-to-r from-indigo-500 to-indigo-600 dark:from-indigo-600 dark:to-indigo-700 transition-all duration-700 ease-out shadow-sm" style="width: 0%;">
+                    <!-- Progress bar glow effect -->
+                    <div class="absolute inset-0 bg-gradient-to-r from-indigo-400 to-indigo-500 opacity-50 blur-sm"></div>
+                    <!-- Progress bar shine -->
+                    <div class="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent"></div>
+                </div>
+                
+                <!-- Progress Percentage Display -->
+                <div id="progress-percentage" class="absolute inset-0 flex items-center justify-center text-xs font-medium text-slate-700 dark:text-slate-300">
+                    0%
+                </div>
+            </div>
+            
+            <p id="status-text" class="text-sm text-slate-600 dark:text-slate-400 mt-3 text-center transition-all duration-300">Initializing...</p>
+        </div>
+
+        <div id="results-display" class="hidden">
+            <!-- Tab Navigation -->
+            <div class="border-b border-slate-200 dark:border-slate-600 mb-4">
+                <nav class="-mb-px flex space-x-8">
+                    <button id="summary-tab" class="tab-button py-2 px-1 border-b-2 border-indigo-500 font-medium text-sm text-indigo-600 dark:text-indigo-400">
+                        Meeting Summary
+                    </button>
+                    <button id="transcript-tab" class="tab-button py-2 px-1 border-b-2 border-transparent font-medium text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-500">
+                        Full Transcript
+                    </button>
+                </nav>
+            </div>
+            
+            <!-- Tab Content -->
+                        <!-- Tab Content -->
+            <div id="summary-content" class="tab-content prose max-w-none relative">
+                <button class="copy-btn bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300" onclick="copyToClipboard('summary-text', this)" title="Copy summary">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                <div id="summary-text" class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-4 prose prose-slate dark:prose-invert max-w-none"></div>
+                <textarea id="summary-raw" class="hidden"></textarea>
+            </div>
+            
+            <div id="transcript-content" class="tab-content hidden prose max-w-none relative">
+                <button class="copy-btn bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300" onclick="copyToClipboard('transcript-text', this)" title="Copy transcript">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                <div id="transcript-text" class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-4 prose prose-slate dark:prose-invert max-w-none"></div>
+                <textarea id="transcript-raw" class="hidden"></textarea>
+            </div>
+            
+            <div id="transcript-content" class="tab-content hidden prose max-w-none relative">
+                <button class="copy-btn bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300" onclick="copyToClipboard('transcript-text', this)" title="Copy transcript">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </button>
+                <pre id="transcript-text" class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-4"></pre>
+            </div>
+        </div>
+        
+        <div id="error-output" class="hidden mt-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+            <h3 class="text-lg font-semibold mb-2 text-red-900 dark:text-red-300">An Error Occurred</h3>
+            <p id="error-text" class="text-sm"></p>
+        </div>
+        
+        <button id="reset-button" class="hidden mt-6 w-full bg-slate-600 dark:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors">
+            Summarize Another File
+        </button>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const uploadContainer = document.getElementById('upload-container');
+    const resultContainer = document.getElementById('result-container');
+    const uploadForm = document.getElementById('upload-form');
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileNameDisplay = document.getElementById('file-name');
+    
+    const statusArea = document.getElementById('status-area');
+    const progressBar = document.getElementById('progress-bar');
+    const statusText = document.getElementById('status-text');
+    
+    const resultsDisplay = document.getElementById('results-display');
+    const summaryText = document.getElementById('summary-text');
+    const transcriptText = document.getElementById('transcript-text');
+    
+    // Tab elements
+    const summaryTab = document.getElementById('summary-tab');
+    const transcriptTab = document.getElementById('transcript-tab');
+    const summaryContent = document.getElementById('summary-content');
+    const transcriptContent = document.getElementById('transcript-content');
+    
+    const errorOutput = document.getElementById('error-output');
+    const errorText = document.getElementById('error-text');
+    const resetButton = document.getElementById('reset-button');
+
+    let pollingInterval;
+
+    // File input handlers
+    fileInput.addEventListener('change', handleFileSelect);
+    dropZone.addEventListener('dragover', handleDragOver);
+    dropZone.addEventListener('drop', handleDrop);
+    dropZone.addEventListener('dragleave', handleDragLeave);
+
+    // Form submission
+    uploadForm.addEventListener('submit', handleSubmit);
+
+    // Tab switching
+    summaryTab.addEventListener('click', () => switchTab('summary'));
+    transcriptTab.addEventListener('click', () => switchTab('transcript'));
+
+    // Reset functionality
+    resetButton.addEventListener('click', resetForm);
+
+    function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (file) {
+            fileNameDisplay.textContent = file.name;
+            dropZone.classList.add('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+        }
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        dropZone.classList.add('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        dropZone.classList.remove('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            fileNameDisplay.textContent = files[0].name;
+            dropZone.classList.add('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+        }
+    }
+
+    function handleDragLeave(e) {
+        if (!dropZone.contains(e.relatedTarget)) {
+            dropZone.classList.remove('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+        }
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        
+        const file = fileInput.files[0];
+        if (!file) {
+            showError('Please select a file first', true);
+            return;
         }
 
-        // Tab event listeners
-        summaryTab.addEventListener('click', () => switchTab(summaryTab, summaryContent));
-        transcriptTab.addEventListener('click', () => switchTab(transcriptTab, transcriptContent));
+        // Validate file type with better error message
+        const allowedTypes = ['audio/', 'video/'];
+        const isValidType = allowedTypes.some(type => file.type.startsWith(type));
+        if (!isValidType) {
+            const fileName = file.name;
+            const fileType = file.type || 'unknown';
+            showError(`Invalid file type: "${fileName}" (${fileType}). Please select an audio or video file (MP3, MP4, WAV, M4A, MOV, AVI, etc.).`, true);
+            return;
+        }
 
-        // Drag and Drop & File Input listeners
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-        dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
-        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; updateFileName(); } });
-        fileInput.addEventListener('change', updateFileName);
-        function updateFileName() { fileNameDisplay.textContent = fileInput.files.length > 0 ? fileInput.files[0].name : ''; }
+        // Check file size before upload (client-side check)
+        const maxSizeGB = 5; // Should match backend setting (5GB)
+        const fileSizeGB = file.size / (1024 * 1024 * 1024);
+        if (fileSizeGB > maxSizeGB) {
+            showError(`File too large: "${file.name}" is ${fileSizeGB.toFixed(2)} GB. Maximum allowed size is ${maxSizeGB} GB.`, true);
+            return;
+        }
 
-        // Form Submission
-        uploadForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!fileInput.files.length) { 
-                alert('Please select a file first.'); // Using alert for simplicity here, can be replaced with a modal
-                return; 
+        // Show processing UI
+        uploadContainer.classList.add('hidden');
+        resultContainer.classList.remove('hidden');
+        statusArea.classList.remove('hidden');
+        resultsDisplay.classList.add('hidden');
+        errorOutput.classList.add('hidden');
+        resetButton.classList.add('hidden');
+
+        // Upload file
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/summarize', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
             }
-            
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
 
-            // Switch to result view
-            uploadContainer.classList.add('hidden');
-            resultContainer.classList.remove('hidden');
-            resetUI(); // Reset previous results
+            const data = await response.json();
+            const jobId = data.job_id;
 
-            try {
-                // Start the job
-                statusText.textContent = 'Uploading file...';
-                const response = await fetch('/summarize', { method: 'POST', body: formData });
-                
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || 'Failed to start summarization job.');
-                }
-                
-                const data = await response.json();
-                const jobId = data.job_id;
+            // Display job ID
+            const jobIdDisplay = document.getElementById('job-id-display');
+            jobIdDisplay.textContent = `Job ID: ${jobId}`;
 
-                // Start polling for status
-                statusText.textContent = 'File uploaded. Job is pending in the queue...';
-                progressBar.style.width = '10%';
-                pollingInterval = setInterval(() => pollStatus(jobId), 3000); // Poll every 3 seconds
+            // Start polling for status
+            startPolling(jobId);
 
-            } catch (err) {
-                showError(err.message);
-            }
-        });
+        } catch (error) {
+            showError('Failed to upload file: ' + error.message);
+        }
+    }
 
-        // Polling function
-        async function pollStatus(jobId) {
+    function startPolling(jobId) {
+        pollingInterval = setInterval(async () => {
             try {
                 const response = await fetch(`/status/${jobId}`);
-                if (!response.ok) {
-                    throw new Error('Could not get job status.');
-                }
                 const data = await response.json();
 
-                const statusMap = {
-                    'PENDING': { width: '10%', text: 'Job is waiting in the queue.' },
-                    'PROCESSING': { width: '50%', text: 'Processing with Gemini... This may take several minutes.' },
-                    'COMPLETED': { width: '100%', text: 'Summary complete!' },
-                    'FAILED': { width: '100%', text: 'Job failed.' }
-                };
-
-                if(statusMap[data.status]) {
-                    progressBar.style.width = statusMap[data.status].width;
-                    statusText.textContent = statusMap[data.status].text;
-                }
+                updateProgress(data);
 
                 if (data.status === 'COMPLETED') {
                     clearInterval(pollingInterval);
-                    summaryText.textContent = data.summary || 'No summary available';
-                    transcriptText.textContent = data.transcript || 'No transcript available';
-                    statusArea.classList.add('hidden');
-                    summaryOutput.classList.remove('hidden');
-                    resetButton.classList.remove('hidden');
-                    // Default to summary tab
-                    switchTab(summaryTab, summaryContent);
+                    showResults(data);
                 } else if (data.status === 'FAILED') {
                     clearInterval(pollingInterval);
-                    showError(data.error);
+                    showError(data.error || 'Processing failed');
                 }
-            } catch (err) {
+            } catch (error) {
                 clearInterval(pollingInterval);
-                showError(err.message);
+                showError('Failed to check status: ' + error.message);
+            }
+        }, 1000);
+    }
+
+    function updateProgress(data) {
+        const progress = data.progress || 0;
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercentage = document.getElementById('progress-percentage');
+        const statusText = document.getElementById('status-text');
+        
+        // Smooth progress bar animation
+        progressBar.style.width = progress + '%';
+        progressPercentage.textContent = Math.round(progress) + '%';
+        
+        // Add pulse effect for active progress
+        if (progress > 0 && progress < 100) {
+            progressBar.style.animation = 'gradientShift 2s ease-in-out infinite, pulse 1.5s ease-in-out infinite';
+        } else if (progress >= 100) {
+            progressBar.style.animation = 'none';
+            progressBar.style.background = 'linear-gradient(45deg, #10b981, #059669)'; // Success green
+        }
+        
+        // Enhanced status messages with detailed progress stages
+        let statusMessage = 'Processing...';
+        if (data.status_message) {
+            statusMessage = data.status_message;
+        } else {
+            // Provide meaningful progress messages based on progress percentage
+            if (progress < 10) {
+                statusMessage = '📤 Uploading file...';
+            } else if (progress < 20) {
+                statusMessage = '✅ Upload complete, validating file...';
+            } else if (progress < 30) {
+                statusMessage = '🔍 Analyzing file format and size...';
+            } else if (progress < 50) {
+                statusMessage = '🚀 Sending to Google AI for processing...';
+            } else if (progress < 80) {
+                statusMessage = '🤖 AI is generating summary and transcript...';
+            } else if (progress < 95) {
+                statusMessage = '📝 Finalizing results...';
+            } else {
+                statusMessage = '🎉 Almost done, preparing display...';
             }
         }
+        statusText.textContent = statusMessage;
+        
+        // Add status text animation
+        statusText.style.transform = 'scale(1.02)';
+        setTimeout(() => {
+            statusText.style.transform = 'scale(1)';
+        }, 200);
+    }
 
-        function showError(message) {
-            errorText.textContent = message;
+    function showResults(data) {
+        statusArea.classList.add('hidden');
+        resultsDisplay.classList.remove('hidden');
+        resetButton.classList.remove('hidden');
+
+        // Store raw markdown content for copying
+        const summaryRaw = data.summary || 'No summary available';
+        const transcriptRaw = data.transcript || 'No transcript available';
+        
+        // Store raw content in hidden textareas for copying
+        document.getElementById('summary-raw').value = summaryRaw;
+        document.getElementById('transcript-raw').value = transcriptRaw;
+        
+        // Render markdown content for display
+        try {
+            document.getElementById('summary-text').innerHTML = marked.parse(summaryRaw);
+            document.getElementById('transcript-text').innerHTML = marked.parse(transcriptRaw);
+        } catch (error) {
+            // Fallback to plain text if markdown parsing fails
+            document.getElementById('summary-text').textContent = summaryRaw;
+            document.getElementById('transcript-text').textContent = transcriptRaw;
+        }
+    }
+
+    function showError(message, showInUploadContainer = false) {
+        if (showInUploadContainer) {
+            // Show error in upload container (for validation errors)
+            uploadContainer.classList.remove('hidden');
+            resultContainer.classList.add('hidden');
+        } else {
+            // Show error in result container (for processing errors)
             statusArea.classList.add('hidden');
-            errorOutput.classList.remove('hidden');
             resetButton.classList.remove('hidden');
         }
         
-        function resetUI() {
-            statusArea.classList.remove('hidden');
-            progressBar.style.width = '0%';
-            statusText.textContent = 'Initializing...';
-            summaryOutput.classList.add('hidden');
-            errorOutput.classList.add('hidden');
-            resetButton.classList.add('hidden');
-        }
+        errorOutput.classList.remove('hidden');
+        errorText.textContent = message;
+        
+        // Add error animation
+        errorOutput.style.transform = 'scale(0.95)';
+        errorOutput.style.opacity = '0';
+        setTimeout(() => {
+            errorOutput.style.transform = 'scale(1)';
+            errorOutput.style.opacity = '1';
+        }, 100);
+    }
 
-        resetButton.addEventListener('click', () => {
-            uploadContainer.classList.remove('hidden');
-            resultContainer.classList.add('hidden');
-            uploadForm.reset();
-            updateFileName();
-            resetUI();
-        });
-    </script>
-</body>
-</html>
+    function switchTab(tab) {
+        if (tab === 'summary') {
+            summaryTab.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            summaryTab.classList.remove('border-transparent', 'text-slate-500', 'dark:text-slate-400');
+            transcriptTab.classList.add('border-transparent', 'text-slate-500', 'dark:text-slate-400');
+            transcriptTab.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            
+            summaryContent.classList.remove('hidden');
+            transcriptContent.classList.add('hidden');
+        } else {
+            transcriptTab.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            transcriptTab.classList.remove('border-transparent', 'text-slate-500', 'dark:text-slate-400');
+            summaryTab.classList.add('border-transparent', 'text-slate-500', 'dark:text-slate-400');
+            summaryTab.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            
+            transcriptContent.classList.remove('hidden');
+            summaryContent.classList.add('hidden');
+        }
+    }
+
+    function resetForm() {
+        uploadContainer.classList.remove('hidden');
+        resultContainer.classList.add('hidden');
+        fileInput.value = '';
+        fileNameDisplay.textContent = '';
+        dropZone.classList.remove('border-indigo-300', 'bg-indigo-50', 'dark:border-indigo-600', 'dark:bg-indigo-900/20');
+        
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+        }
+    }
+</script>
+{% endblock %}

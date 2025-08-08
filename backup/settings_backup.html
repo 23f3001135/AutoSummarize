@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Auto-Summarizer</title>
+    
+    <!-- Prevent FOUC by setting theme immediately -->
+    <script>
+        // On page load or when changing themes, best to add inline in head to avoid FOUC
+        document.documentElement.classList.toggle(
+            "dark",
+            localStorage.theme === "dark" ||
+            (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches)
+        );
+    </script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @import url('https://rsms.me/inter/inter.css');
+        
+        /* Dark mode toggle */
+        .dark-mode-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgb(255 255 255 / 1);
+            border: 1px solid rgb(226 232 240 / 1);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .dark .dark-mode-toggle {
+            background-color: rgb(30 41 59 / 1);
+            border-color: rgb(51 65 85 / 1);
+            color: rgb(241 245 249 / 1);
+        }
+        
+        .dark-mode-toggle:hover {
+            background-color: rgb(248 250 252 / 1);
+        }
+        
+        .dark .dark-mode-toggle:hover {
+            background-color: rgb(51 65 85 / 1);
+        }
+        
+        /* Alert styles for dark mode */
+        .alert {
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .alert-success {
+            background-color: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }
+        
+        .alert-error {
+            background-color: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }
+        
+        .dark .alert-success {
+            background-color: #1f3a23;
+            border-color: #2d5a31;
+            color: #86efac;
+        }
+        
+        .dark .alert-error {
+            background-color: #3a1f1f;
+            border-color: #5a2d2d;
+            color: #fca5a5;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-screen transition-colors duration-300">
+    <!-- Dark Mode Toggle -->
+    <button class="dark-mode-toggle" id="dark-mode-toggle" title="Toggle dark mode">
+        <svg id="sun-icon" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+        <svg id="moon-icon" class="h-5 w-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+    </button>
+
+    <div class="w-full max-w-4xl mx-auto p-4 sm:p-8">
+        <!-- Navigation Bar -->
+        <nav class="mb-8">
+            <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-1">
+                <div class="flex space-x-1">
+                    <a href="/" class="flex-1 text-center py-2 px-4 rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-colors">
+                        Home
+                    </a>
+                    <a href="/history" class="flex-1 text-center py-2 px-4 rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-colors">
+                        History
+                    </a>
+                    <a href="/settings" class="flex-1 text-center py-2 px-4 rounded-md bg-indigo-600 dark:bg-indigo-700 text-white font-medium transition-colors">
+                        Settings
+                    </a>
+                </div>
+            </div>
+        </nav>
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-100">Settings</h1>
+            <p class="text-slate-600 dark:text-slate-400 mt-2">Configure your AutoSummarizer preferences and API settings.</p>
+        </header>
+
+        <main class="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 sm:p-8 border border-slate-200 dark:border-slate-700">
+            <!-- Loading State -->
+            <div id="loading" class="text-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
+                <p class="text-slate-600 dark:text-slate-400">Loading settings...</p>
+            </div>
+
+            <!-- Settings Form -->
+            <form id="settings-form" class="hidden space-y-6">
+                <!-- Success/Error Messages -->
+                <div id="message-container"></div>
+
+                <!-- Model Selection -->
+                <div>
+                    <label for="model" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        AI Model
+                    </label>
+                    <select id="model" name="model" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    </select>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Choose the AI model for processing your files.</p>
+                </div>
+
+                <!-- API Key -->
+                <div>
+                    <label for="api_key" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Gemini API Key
+                    </label>
+                    <div class="relative">
+                        <input type="password" id="api_key" name="api_key" class="w-full px-3 py-2 pr-10 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your Gemini API key">
+                        <button type="button" id="toggle-api-key" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <svg id="eye-icon" class="h-5 w-5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <svg id="eye-off-icon" class="h-5 w-5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Your API key is stored locally and never sent to our servers.</p>
+                </div>
+
+                <!-- Max Duration -->
+                <div>
+                    <label for="max_duration_seconds" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Chunking Threshold (seconds)
+                    </label>
+                    <input type="number" id="max_duration_seconds" name="max_duration_seconds" min="300" max="3600" step="60" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">Files longer than this will be split into chunks. Recommended: 1800 (30 minutes).</p>
+                </div>
+
+                <!-- Summary Prompt -->
+                <div>
+                    <label for="summary_prompt" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Summary Prompt
+                    </label>
+                    <textarea id="summary_prompt" name="summary_prompt" rows="6" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your custom summary prompt..."></textarea>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">This prompt guides how the AI creates meeting summaries.</p>
+                </div>
+
+                <!-- Transcription Prompt -->
+                <div>
+                    <label for="transcription_prompt" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Transcription Prompt
+                    </label>
+                    <textarea id="transcription_prompt" name="transcription_prompt" rows="4" class="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Enter your custom transcription prompt..."></textarea>
+                    <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">This prompt guides how the AI transcribes audio content.</p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-6">
+                    <button type="submit" id="save-btn" class="flex-1 bg-indigo-600 dark:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                        Save Settings
+                    </button>
+                    <button type="button" id="reset-btn" class="flex-1 bg-slate-600 dark:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors">
+                        Reset to Defaults
+                    </button>
+                </div>
+            </form>
+        </main>
+    </div>
+
+    <script>
+        // Dark mode functionality
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const sunIcon = document.getElementById('sun-icon');
+        const moonIcon = document.getElementById('moon-icon');
+        
+        // Initialize theme from storage or system preference
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const shouldBeDark = savedTheme === 'dark' || (!savedTheme && systemPrefersDark);
+            
+            updateTheme(shouldBeDark);
+        }
+        
+        function updateTheme(isDark) {
+            document.documentElement.classList.toggle('dark', isDark);
+            sunIcon.classList.toggle('hidden', isDark);
+            moonIcon.classList.toggle('hidden', !isDark);
+        }
+        
+        // Theme toggle
+        darkModeToggle.addEventListener('click', () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            const newTheme = isDark ? 'light' : 'dark';
+            
+            localStorage.setItem('theme', newTheme);
+            updateTheme(!isDark);
+        });
+        
+        // Initialize on page load (this runs after the inline script in head)
+        initializeTheme();
+
+        // Elements
+        const loading = document.getElementById('loading');
+        const settingsForm = document.getElementById('settings-form');
+        const messageContainer = document.getElementById('message-container');
+        const saveBtn = document.getElementById('save-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const toggleApiKey = document.getElementById('toggle-api-key');
+        const eyeIcon = document.getElementById('eye-icon');
+        const eyeOffIcon = document.getElementById('eye-off-icon');
+        const apiKeyInput = document.getElementById('api_key');
+
+        // Load settings on page load
+        document.addEventListener('DOMContentLoaded', loadSettings);
+
+        // Form submission
+        settingsForm.addEventListener('submit', saveSettings);
+        resetBtn.addEventListener('click', resetToDefaults);
+
+        // API key visibility toggle
+        toggleApiKey.addEventListener('click', () => {
+            if (apiKeyInput.type === 'password') {
+                apiKeyInput.type = 'text';
+                eyeIcon.classList.add('hidden');
+                eyeOffIcon.classList.remove('hidden');
+            } else {
+                apiKeyInput.type = 'password';
+                eyeIcon.classList.remove('hidden');
+                eyeOffIcon.classList.add('hidden');
+            }
+        });
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                if (!response.ok) {
+                    throw new Error('Failed to load settings');
+                }
+                const settings = await response.json();
+                
+                // Populate form
+                document.getElementById('model').value = settings.model || 'gemini-2.5-flash';
+                document.getElementById('max_duration_seconds').value = settings.max_duration_seconds || 1800;
+                document.getElementById('summary_prompt').value = settings.summary_prompt || '';
+                document.getElementById('transcription_prompt').value = settings.transcription_prompt || '';
+                
+                // Show placeholder for API key if it exists
+                if (settings.api_key) {
+                    apiKeyInput.placeholder = '••••••••••••••••••••••••••••••••';
+                }
+                
+                loading.classList.add('hidden');
+                settingsForm.classList.remove('hidden');
+                
+            } catch (err) {
+                showMessage('Failed to load settings: ' + err.message, 'error');
+                loading.classList.add('hidden');
+                settingsForm.classList.remove('hidden');
+            }
+        }
+
+        async function saveSettings(e) {
+            e.preventDefault();
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            
+            try {
+                const formData = new FormData(settingsForm);
+                const settings = Object.fromEntries(formData.entries());
+                
+                // Convert max_duration_seconds to number
+                settings.max_duration_seconds = parseInt(settings.max_duration_seconds);
+                
+                // Only include API key if it's not empty and not a placeholder
+                if (!settings.api_key || settings.api_key.includes('••••')) {
+                    delete settings.api_key;
+                }
+                
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(settings)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to save settings');
+                }
+                
+                showMessage('Settings saved successfully!', 'success');
+                
+                // Update API key placeholder if it was set
+                if (formData.get('api_key') && !formData.get('api_key').includes('••••')) {
+                    apiKeyInput.value = '';
+                    apiKeyInput.placeholder = '••••••••••••••••••••••••••••••••';
+                }
+                
+            } catch (err) {
+                showMessage('Failed to save settings: ' + err.message, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Settings';
+            }
+        }
+
+        async function resetToDefaults() {
+            if (!confirm('Are you sure you want to reset all settings to defaults? This will overwrite your current configuration.')) {
+                return;
+            }
+            
+            try {
+                const defaults = {
+                    model: 'gemini-2.5-flash',
+                    max_duration_seconds: 1800,
+                    summary_prompt: `You are an expert summarizer specializing in crafting professional minutes of meetings and executive summaries. Please analyze the following call recording and generate a concise, well-structured, and formal summary. Ensure the output reflects a tone appropriate for stakeholders or senior management.
+Instructions: 
+Review the video thoroughly; feel free to replay it multiple times to ensure complete understanding.
+Focus on capturing key discussion points, decisions made, action items, participants involved, and any timelines or follow-ups discussed.
+Structure the summary in a clear, professional format — ideally with bullet points or short sections under headers (e.g., Meeting Objective, Key Discussions, Decisions, Action Items, Next Steps).
+Maintain an objective tone and avoid subjective interpretation.
+Output Format: Provide the summary in a clean and professional style suitable for corporate documentation or official records.`,
+                    transcription_prompt: `You are a highly accurate audio transcription service. Your task is to transcribe the provided audio segment word-for-word.
+- Do not add any commentary, interpretation, or summary.
+- Preserve the exact wording, including filler words (e.g., "um," "uh"), pauses, and grammatical errors.
+- The output should be only the raw text of the speech from the audio.`
+                };
+                
+                // Update form
+                document.getElementById('model').value = defaults.model;
+                document.getElementById('max_duration_seconds').value = defaults.max_duration_seconds;
+                document.getElementById('summary_prompt').value = defaults.summary_prompt;
+                document.getElementById('transcription_prompt').value = defaults.transcription_prompt;
+                
+                showMessage('Settings reset to defaults. Click "Save Settings" to apply.', 'success');
+                
+            } catch (err) {
+                showMessage('Failed to reset settings: ' + err.message, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            messageContainer.innerHTML = `
+                <div class="alert ${alertClass}">
+                    ${message}
+                </div>
+            `;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                messageContainer.innerHTML = '';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
