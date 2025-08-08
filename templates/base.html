@@ -251,6 +251,24 @@
     </div>
     
     {% block modals %}{% endblock %}
+    <!-- API Key Prompt Modal -->
+    <div id="api-key-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[1000]">
+        <div class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-md border border-slate-200 dark:border-slate-700 p-6">
+            <div class="flex items-start justify-between mb-4">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Set Google Gemini API Key</h3>
+                <button id="api-key-close" class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <p class="text-sm text-slate-600 dark:text-slate-300 mb-4">Add your Gemini API key to enable summarization. You can change this anytime in Settings.</p>
+            <input id="api-key-input" type="password" placeholder="sk-..." class="w-full px-3 py-2 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100" />
+            <div class="flex justify-end gap-2 mt-4">
+                <button id="api-key-cancel" class="px-4 py-2 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">Later</button>
+                <button id="api-key-save" class="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white">Save</button>
+            </div>
+            <p id="api-key-error" class="hidden text-sm text-red-600 dark:text-red-400 mt-3">Failed to save API key. Please try again.</p>
+        </div>
+    </div>
     
     <script>
         // Dark mode toggle functionality
@@ -275,7 +293,7 @@
             updateIcons();
         });
 
-        // Initialize icons
+    // Initialize icons
         updateIcons();
 
         // Global utility functions
@@ -322,6 +340,43 @@
                 console.error('Failed to copy: ', err);
             });
         }
+        // API key prompt logic (only on upload page)
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const isUpload = window.location.pathname === '/' || window.location.pathname === '/index' || window.location.pathname === '/index.html';
+                if (!isUpload) return;
+                const res = await fetch('/api/has_api_key');
+                const data = await res.json();
+                if (!data.hasApiKey) {
+                    const modal = document.getElementById('api-key-modal');
+                    const input = document.getElementById('api-key-input');
+                    const save = document.getElementById('api-key-save');
+                    const cancel = document.getElementById('api-key-cancel');
+                    const close = document.getElementById('api-key-close');
+                    const err = document.getElementById('api-key-error');
+                    const open = () => { modal.classList.remove('hidden'); input.focus(); };
+                    const hide = () => { modal.classList.add('hidden'); };
+                    const saveKey = async () => {
+                        const key = input.value.trim();
+                        if (!key) { err.textContent = 'API key is required.'; err.classList.remove('hidden'); return; }
+                        err.classList.add('hidden');
+                        try {
+                            const resp = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_key: key }) });
+                            if (!resp.ok) throw new Error('Failed');
+                            hide();
+                        } catch {
+                            err.textContent = 'Failed to save API key. Please try again.';
+                            err.classList.remove('hidden');
+                        }
+                    };
+                    save.addEventListener('click', saveKey);
+                    cancel.addEventListener('click', hide);
+                    close.addEventListener('click', hide);
+                    modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+                    open();
+                }
+            } catch (e) { /* non-blocking */ }
+        });
     </script>
     
     {% block scripts %}{% endblock %}

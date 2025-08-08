@@ -11,3 +11,4 @@ env/ # You might also have a virtual environment named "env"
 
 # Ignore large binary files or project specific files
 *.mp4
+.DS_Store

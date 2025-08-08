@@ -1,12 +1,10 @@
 import json
 import logging
 import os
-from pathlib import Path
 from threading import Lock
 from models import db, Setting as SettingModel
 
 logger = logging.getLogger(__name__)
-SETTINGS_FILE = Path("settings.json")
 settings_lock = Lock()
 
 # Default settings
@@ -63,18 +61,9 @@ def _load_settings_from_db():
 
 
 def load_settings():
-    """Load settings from DB; fall back to file, then defaults. Ensures types and defaults."""
+    """Load settings from DB with sensible defaults. Ensures types."""
     with settings_lock:
-        # Prefer DB
         settings = _load_settings_from_db()
-        if not settings:
-            # Fall back to existing file to bootstrap, then migrate into DB
-            try:
-                if SETTINGS_FILE.exists():
-                    with open(SETTINGS_FILE, "r") as f:
-                        settings = json.load(f)
-            except Exception as e:
-                logger.debug(f"Settings file read failed: {e}")
 
         # Merge defaults
         merged = DEFAULT_SETTINGS.copy()
