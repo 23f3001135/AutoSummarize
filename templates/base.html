@@ -23,6 +23,20 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         @import url('https://rsms.me/inter/inter.css');
+        /* Modern background */
+        body {
+            background-image:
+                radial-gradient(60rem 30rem at 120% -10%, rgba(79,70,229,0.12), transparent 50%),
+                radial-gradient(50rem 25rem at -20% 10%, rgba(16,185,129,0.10), transparent 50%),
+                linear-gradient(180deg, rgba(15,23,42,0.03), rgba(15,23,42,0));
+            background-attachment: fixed;
+        }
+        .dark body {
+            background-image:
+                radial-gradient(60rem 30rem at 120% -10%, rgba(99,102,241,0.18), transparent 50%),
+                radial-gradient(50rem 25rem at -20% 10%, rgba(16,185,129,0.14), transparent 50%),
+                linear-gradient(180deg, rgba(15,23,42,0.25), rgba(15,23,42,0));
+        }
         
         /* Dark mode toggle */
         .dark-mode-toggle {
@@ -72,6 +86,19 @@
         .dark .status-completed { background-color: #1f3a23; color: #86efac; }
         .dark .status-failed { background-color: #3a1f1f; color: #fca5a5; }
         .dark .status-processing { background-color: #3a2f1f; color: #fbbf24; }
+
+        /* Status dot for processing */
+        .status-processing::before {
+            content: '';
+            display: inline-block;
+            width: 8px; height: 8px; border-radius: 9999px;
+            background: currentColor; opacity: 0.75; margin-right: 6px;
+            animation: pulseDot 1.2s ease-in-out infinite;
+        }
+        @keyframes pulseDot {
+            0%, 100% { transform: scale(1); opacity: .8; }
+            50% { transform: scale(1.35); opacity: .5; }
+        }
         
         /* Copy button styles */
         .copy-btn {
@@ -96,8 +123,19 @@
 
         /* Custom styles */
         .drop-zone { 
-            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out; 
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform .2s;
+            position: relative;
+            overflow: hidden;
         }
+        .drop-zone::after {
+            content: '';
+            position: absolute; inset: -1px;
+            background: conic-gradient(from 0deg, rgba(99,102,241,.5), rgba(168,85,247,.4), rgba(59,130,246,.5), rgba(99,102,241,.5));
+            filter: blur(18px); opacity: 0; transition: opacity .3s;
+            z-index: -1;
+        }
+        .drop-zone:hover::after, .drop-zone.dragover::after { opacity: .6; }
+        .drop-zone:hover { transform: translateY(-1px); }
         
         .tab-button { cursor: pointer; transition: all 0.2s ease-in-out; }
         .tab-content { max-height: 500px; overflow-y: auto; }
@@ -107,6 +145,17 @@
         }
         .job-card:hover { 
             transform: translateY(-2px); 
+        }
+
+        /* Glass effect */
+        .glass {
+            background: rgba(255,255,255,0.75);
+            border: 1px solid rgba(226,232,240,.6);
+            backdrop-filter: saturate(140%) blur(10px);
+        }
+        .dark .glass {
+            background: rgba(15,23,42,0.55);
+            border-color: rgba(51,65,85,.6);
         }
 
         /* Alert styles for dark mode */
@@ -139,6 +188,12 @@
             border-color: #5a2d2d;
             color: #fca5a5;
         }
+
+    /* Nicer scrollbars */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.5); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,.8); }
     </style>
     
     {% block extra_styles %}{% endblock %}

@@ -11,13 +11,12 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 # The processing logic is now imported directly
 from processing.media_handler import process_single_file
-import database
 import settings
+from models import db, Job
 
-# --- New In-Memory Setup ---
-# A thread-safe dictionary to store job status and results
-# Load existing jobs from the database on startup
-jobs = database.load_all_jobs()
+# --- In-Memory State ---
+# A thread-safe dictionary to store live job status and results (for fast polling)
+jobs = {}
 jobs_lock = Lock()
 
 # A thread pool to run summarization tasks in the background
@@ -33,6 +32,14 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 # Configure timeouts for large file processing
 app.config['TIMEOUT'] = 3600  # 1 hour timeout for requests
 
+# Database (SQLite via Flask-SQLAlchemy)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///autosummarize.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
+
 Path(app.config['UPLOAD_FOLDER']).mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -45,6 +52,17 @@ def update_job_progress(job_id, progress, message):
             jobs[job_id]['progress'] = progress
             jobs[job_id]['status_message'] = message
     logger.info(f"Job {job_id}: Progress {progress}% - {message}")
+    # Persist occasional progress updates (best-effort)
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            job = Job.query.get(job_id)
+            if job:
+                job.progress = int(progress or 0)
+                job.status_message = message
+                db.session.commit()
+    except Exception as _e:
+        logger.debug(f"Non-fatal: couldn't persist progress for {job_id}: {_e}")
 
 def run_summarization_task(job_id, file_path_str):
     """The function that will run in a background thread."""
@@ -59,6 +77,17 @@ def run_summarization_task(job_id, file_path_str):
             jobs[job_id]['status'] = 'PROCESSING'
             jobs[job_id]['progress'] = 0
             jobs[job_id]['status_message'] = 'Starting upload...'
+        # Persist transition to DB
+        try:
+            with app.app_context():
+                job_row = Job.query.get(job_id)
+                if job_row:
+                    job_row.status = 'PROCESSING'
+                    job_row.progress = 0
+                    job_row.status_message = 'Starting upload...'
+                    db.session.commit()
+        except Exception as _e:
+            logger.debug(f"Couldn't persist PROCESSING state for {job_id}: {_e}")
 
         # Update progress through different stages
         update_job_progress(job_id, 5, '📤 Uploading file...')
@@ -66,8 +95,9 @@ def run_summarization_task(job_id, file_path_str):
         # This is the long-running call to the Gemini API
         result_data = process_single_file(file_path, lambda p, m: update_job_progress(job_id, p, m))
 
-        if not result_data or not result_data.get('summary'):
-            raise ValueError("Processing returned no summary.")
+        # Treat explicit errors as failures and ensure summary exists
+        if (not result_data) or result_data.get('error') or (not result_data.get('summary')):
+            raise ValueError(result_data.get('error') or "Processing returned no summary.")
 
         # Final progress update
         update_job_progress(job_id, 100, '🎉 Processing complete!')
@@ -82,8 +112,20 @@ def run_summarization_task(job_id, file_path_str):
             jobs[job_id]['completed_at'] = datetime.now().isoformat()
             # Prepare job data for saving
             job_to_save = jobs[job_id].copy()
-        
-        database.save_job(job_to_save)
+        # Persist to DB
+        try:
+            with app.app_context():
+                job_row = Job.query.get(job_id)
+                if job_row:
+                    job_row.status = 'COMPLETED'
+                    job_row.summary = job_to_save.get('summary')
+                    job_row.transcript = job_to_save.get('transcript')
+                    job_row.progress = 100
+                    job_row.completed_at = datetime.fromisoformat(job_to_save['completed_at'])
+                    job_row.status_message = 'Completed'
+                    db.session.commit()
+        except Exception as _e:
+            logger.error(f"Failed to persist completed job {job_id}: {_e}")
         logger.info(f"Job {job_id}: Successfully generated and saved summary and transcript.")
 
     except Exception as e:
@@ -96,12 +138,20 @@ def run_summarization_task(job_id, file_path_str):
             jobs[job_id]['completed_at'] = datetime.now().isoformat()
             # Save failed job to history
             job_to_save = jobs[job_id].copy()
-        
+        # Persist failure to DB
         try:
-            database.save_job(job_to_save)
-            logger.info(f"Job {job_id}: Saved failed job to history")
+            with app.app_context():
+                job_row = Job.query.get(job_id)
+                if job_row:
+                    job_row.status = 'FAILED'
+                    job_row.error = job_to_save.get('error')
+                    from datetime import datetime as _dt
+                    job_row.completed_at = _dt.fromisoformat(job_to_save['completed_at'])
+                    job_row.status_message = 'Failed'
+                    db.session.commit()
+            logger.info(f"Job {job_id}: Saved failed job to history (DB)")
         except Exception as save_error:
-            logger.error(f"Failed to save failed job {job_id} to history: {save_error}")
+            logger.error(f"Failed to save failed job {job_id} to DB: {save_error}")
             
     finally:
         # Clean up the temporary file
@@ -133,15 +183,29 @@ def history():
     """Display the history of all completed jobs."""
     return render_template('history.html', active_page='history')
 
+@app.route('/api/history/<job_id>', methods=['DELETE'])
+def delete_history_item(job_id):
+    """Delete a job from history DB."""
+    try:
+        with app.app_context():
+            job = Job.query.get(job_id)
+            if not job:
+                return jsonify({'error': 'Not found'}), 404
+            db.session.delete(job)
+            db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to delete job {job_id}: {e}")
+        return jsonify({'error': 'Failed to delete'}), 500
+
 @app.route('/api/history')
 def get_history():
-    """API endpoint to get all job history."""
+    """API endpoint to get all job history from the database."""
     try:
-        all_jobs = database.load_all_jobs()
-        # Convert to list and sort by most recent first (assuming job IDs are timestamps)
-        history_list = list(all_jobs.values())
-        # Sort by status completion - completed first, then by ID (most recent first)
-        history_list.sort(key=lambda x: (x.get('status') != 'COMPLETED', x.get('id')), reverse=True)
+        with app.app_context():
+            # Order by: completed_at present last=False (i.e., completed first), then completed_at desc, then created_at desc
+            jobs_q = Job.query.order_by((Job.completed_at.is_(None)).asc(), Job.completed_at.desc(), Job.created_at.desc()).all()
+            history_list = [j.to_dict() for j in jobs_q]
         return jsonify({'jobs': history_list})
     except Exception as e:
         logger.error(f"Failed to load history: {e}")
@@ -151,6 +215,17 @@ def get_history():
 def settings_page():
     """Display the settings page."""
     return render_template('settings.html', active_page='settings')
+
+@app.route('/api/has_api_key', methods=['GET'])
+def has_api_key():
+    """Return whether the Gemini API key is configured."""
+    try:
+        current_settings = settings.load_settings()
+        is_set = bool(os.getenv('GEMINI_API_KEY') or current_settings.get('api_key'))
+        return jsonify({ 'hasApiKey': is_set })
+    except Exception as e:
+        logger.error(f"Failed to check API key: {e}")
+        return jsonify({ 'hasApiKey': False })
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
@@ -173,14 +248,11 @@ def update_settings():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
+        # Delegate to settings module (which uses DB if available)
         current_settings = settings.load_settings()
-        
-        # Update each provided setting
         for key, value in data.items():
             if key in ['model', 'api_key', 'summary_prompt', 'transcription_prompt', 'max_duration_seconds']:
                 current_settings[key] = value
-                logger.info(f"Updated setting: {key}")
-        
         settings.save_settings(current_settings)
         return jsonify({'success': True, 'message': 'Settings updated successfully'})
         
@@ -215,20 +287,30 @@ def summarize_route():
         'summary': None, 
         'transcript': None, 
         'error': None,
-    'filename': unique_filename,
+        'filename': unique_filename,
         'created_at': datetime.now().isoformat(),
         'completed_at': None
     }
     
     with jobs_lock:
         jobs[job_id] = job_data.copy()
-    
-    # Save to history immediately so it shows up in history page
+
+    # Persist to DB so it shows up in history immediately
     try:
-        database.save_job(job_data)
-        logger.info(f"Job {job_id}: Added to history with PENDING status")
+        with app.app_context():
+            job_row = Job()
+            job_row.id = job_data['id']
+            job_row.filename = job_data['filename']
+            job_row.status = job_data['status']
+            job_row.progress = job_data['progress']
+            job_row.status_message = job_data['status_message']
+            from datetime import datetime as _dt
+            job_row.created_at = _dt.fromisoformat(job_data['created_at'])
+            db.session.add(job_row)
+            db.session.commit()
+            logger.info(f"Job {job_id}: Added to DB with PENDING status")
     except Exception as e:
-        logger.error(f"Failed to save job {job_id} to history: {e}")
+        logger.error(f"Failed to persist job {job_id} to DB: {e}")
 
     # Submit the task to run in the background
     executor.submit(run_summarization_task, job_id, str(save_path))

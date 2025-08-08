@@ -3,3 +3,4 @@ python-dotenv
 google-genai
 werkzeug
 gunicorn
+flask_sqlalchemy

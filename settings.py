@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 from threading import Lock
+from models import db, Setting as SettingModel
 
 logger = logging.getLogger(__name__)
 SETTINGS_FILE = Path("settings.json")
@@ -47,51 +48,69 @@ Requirements:
 }
 
 
+def _load_settings_from_db():
+    cfg = {}
+    try:
+        items = SettingModel.query.all()
+        for s in items:
+            try:
+                cfg[s.key] = json.loads(s.value)
+            except Exception:
+                cfg[s.key] = s.value
+    except Exception as e:
+        logger.debug(f"Settings DB read failed: {e}")
+    return cfg
+
+
 def load_settings():
-    """Load settings from settings.json file."""
+    """Load settings from DB; fall back to file, then defaults. Ensures types and defaults."""
     with settings_lock:
+        # Prefer DB
+        settings = _load_settings_from_db()
+        if not settings:
+            # Fall back to existing file to bootstrap, then migrate into DB
+            try:
+                if SETTINGS_FILE.exists():
+                    with open(SETTINGS_FILE, "r") as f:
+                        settings = json.load(f)
+            except Exception as e:
+                logger.debug(f"Settings file read failed: {e}")
+
+        # Merge defaults
+        merged = DEFAULT_SETTINGS.copy()
+        merged.update(settings or {})
+
+        # Coerce types
         try:
-            if SETTINGS_FILE.exists():
-                with open(SETTINGS_FILE, "r") as f:
-                    settings = json.load(f)
-                    # Ensure all default keys exist
-                    for key, value in DEFAULT_SETTINGS.items():
-                        if key not in settings:
-                            settings[key] = value
+            merged["max_duration_seconds"] = int(merged.get("max_duration_seconds", DEFAULT_SETTINGS["max_duration_seconds"]))
+        except (ValueError, TypeError):
+            merged["max_duration_seconds"] = DEFAULT_SETTINGS["max_duration_seconds"]
 
-                    # Ensure numeric values are properly typed
-                    if "max_duration_seconds" in settings:
-                        try:
-                            settings["max_duration_seconds"] = int(
-                                settings["max_duration_seconds"]
-                            )
-                        except (ValueError, TypeError):
-                            logger.warning(
-                                f"Invalid max_duration_seconds value, using default: {DEFAULT_SETTINGS['max_duration_seconds']}"
-                            )
-                            settings["max_duration_seconds"] = DEFAULT_SETTINGS[
-                                "max_duration_seconds"
-                            ]
-
-                    return settings
-            else:
-                # Create default settings file
-                save_settings(DEFAULT_SETTINGS)
-                return DEFAULT_SETTINGS.copy()
-        except Exception as e:
-            logger.error(f"Failed to load settings: {e}. Using defaults.")
-            return DEFAULT_SETTINGS.copy()
+        return merged
 
 
 def save_settings(settings_data):
-    """Save settings to settings.json file."""
+    """Persist settings to DB (JSON-serialize values)."""
     with settings_lock:
         try:
-            with open(SETTINGS_FILE, "w") as f:
-                json.dump(settings_data, f, indent=4)
-            logger.info("Settings saved successfully.")
+            for key, value in settings_data.items():
+                # Store as JSON where possible
+                try:
+                    serialized = json.dumps(value)
+                except Exception:
+                    serialized = str(value)
+                s = SettingModel.query.get(key)
+                if not s:
+                    s = SettingModel()
+                    s.key = key
+                    s.value = serialized
+                    db.session.add(s)
+                else:
+                    s.value = serialized
+            db.session.commit()
+            logger.info("Settings saved to DB.")
         except Exception as e:
-            logger.error(f"Failed to save settings: {e}")
+            logger.error(f"Failed to save settings to DB: {e}")
             raise
 
 
@@ -118,16 +137,14 @@ def get_config():
 
 
 def update_setting(key, value):
-    """Update a single setting."""
+    """Update a single setting in DB."""
     settings = load_settings()
     settings[key] = value
     save_settings(settings)
 
-    # If updating API key, also update environment variable
     if key == "api_key" and value:
         os.environ["GEMINI_API_KEY"] = value
-
-    logger.info(f"Updated setting {key}")
+    logger.info(f"Updated setting {key} in DB")
 
 
 def get_setting(key, default=None):
