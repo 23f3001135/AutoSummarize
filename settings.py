@@ -12,26 +12,40 @@ settings_lock = Lock()
 DEFAULT_SETTINGS = {
     "model": "gemini-2.5-flash",
     "api_key": "",
-    "summary_prompt": """You are an expert summarizer specializing in crafting professional minutes of meetings and executive summaries. Please analyze the following call recording and generate a concise, well-structured, and formal summary. Ensure the output reflects a tone appropriate for stakeholders or senior management.
-Instructions: 
-Review the video thoroughly; feel free to replay it multiple times to ensure complete understanding.
-Focus on capturing key discussion points, decisions made, action items, participants involved, and any timelines or follow-ups discussed.
-Structure the summary in a clear, professional format — ideally with bullet points or short sections under headers (e.g., Meeting Objective, Key Discussions, Decisions, Action Items, Next Steps).
-Maintain an objective tone and avoid subjective interpretation.
-Output Format: Provide the summary in a clean and professional style suitable for corporate documentation or official records. Important: avoid writting things like "Here's the minutes of the meeting as per your request which is professionally written" instead directly write what's asked and also avoid ending statements such as "Let me know if you'd like a lighter version for internal use or a template for recurring use across meetings." or anything similar your response will directly be copy pasted in docs and emailed to c-suite executives, so it should be ready to use without further editing.
-pls make sure to avoid writing things like "Certainly. Here's a summary of the call recording: ..." stright 
-"**Call Summary**
-**Date:** October 26, 2023
-**Participants:** David, Aman
-"
-this was an example, it could be starting as minutes of meeting. or somerhign which sounds good.""",
-    "transcription_prompt": """You are a highly accurate audio transcription service. Your task is to transcribe the provided audio segment word-for-word.
-- Do not add any commentary, interpretation, or summary.
-- Preserve the exact wording, including filler words (e.g., "um," "uh"), pauses, and grammatical errors.
-- The output should be only the raw text of the speech from the audio.
-- Stricktly do not output things like "Here's the transcription of the audio segment: \"""",
-    "max_duration_seconds": 3600
+    "summary_prompt": """
+Role: You are an expert corporate summarizer specializing in professional minutes of meetings and executive summaries for senior stakeholders.
+Task: Analyze the provided call recording and produce a concise, well-structured, and formal summary.
+Requirements:
+	•	Thoroughly review the recording; replay as needed to ensure accuracy.
+	•	Capture:
+	•	Meeting objective
+	•	Key discussion points
+	•	Decisions made
+	•	Action items with owners and deadlines
+	•	Participants present
+	•	Follow-ups or next steps
+	•	Structure the output with clear sections and bullet points where appropriate (e.g., Meeting Objective, Key Discussions, Decisions, Action Items, Next Steps).
+	•	Maintain an objective, neutral tone without personal opinions or interpretation.
+	•	Ensure the output is immediately suitable for corporate documentation—ready to copy into an official email or report.
+	•	Prohibited: Any introductory phrases (e.g., “Here’s the summary…”), closing remarks, or meta-commentary. Start directly with the formatted summary, e.g.:
+**Minutes of Meeting**
+**Date:** October xx, 20xx  
+**Participants:** David, Naman, ...  
+	•	Replace all placeholder information (date, participants, etc.) with actual data from the recording.
+    - best keep your response in markdown so we can easily format it.
+""",
+    "transcription_prompt": """
+Role: You are a highly accurate verbatim transcription service.
+Task: Transcribe the provided audio exactly as spoken.
+Requirements:
+	•	Capture every word exactly, including filler words (“um,” “uh”), pauses, false starts, and grammatical errors.
+	•	Do not paraphrase, interpret, or summarize.
+	•	Output only the raw transcript—no headings, introductions, or commentary.
+	•	Prohibited: Any prefatory text such as “Here’s the transcription…” or closing remarks. The response must contain only the verbatim transcription content.
+""",
+    "max_duration_seconds": 3600,
 }
+
 
 def load_settings():
     """Load settings from settings.json file."""
@@ -44,15 +58,21 @@ def load_settings():
                     for key, value in DEFAULT_SETTINGS.items():
                         if key not in settings:
                             settings[key] = value
-                    
+
                     # Ensure numeric values are properly typed
-                    if 'max_duration_seconds' in settings:
+                    if "max_duration_seconds" in settings:
                         try:
-                            settings['max_duration_seconds'] = int(settings['max_duration_seconds'])
+                            settings["max_duration_seconds"] = int(
+                                settings["max_duration_seconds"]
+                            )
                         except (ValueError, TypeError):
-                            logger.warning(f"Invalid max_duration_seconds value, using default: {DEFAULT_SETTINGS['max_duration_seconds']}")
-                            settings['max_duration_seconds'] = DEFAULT_SETTINGS['max_duration_seconds']
-                    
+                            logger.warning(
+                                f"Invalid max_duration_seconds value, using default: {DEFAULT_SETTINGS['max_duration_seconds']}"
+                            )
+                            settings["max_duration_seconds"] = DEFAULT_SETTINGS[
+                                "max_duration_seconds"
+                            ]
+
                     return settings
             else:
                 # Create default settings file
@@ -61,6 +81,7 @@ def load_settings():
         except Exception as e:
             logger.error(f"Failed to load settings: {e}. Using defaults.")
             return DEFAULT_SETTINGS.copy()
+
 
 def save_settings(settings_data):
     """Save settings to settings.json file."""
@@ -73,34 +94,41 @@ def save_settings(settings_data):
             logger.error(f"Failed to save settings: {e}")
             raise
 
+
 def get_config():
     """Get configuration values for the application (compatible with existing config.py)."""
     settings = load_settings()
-    
+
     # Get API key from settings or environment (environment takes precedence)
     api_key = os.getenv("GEMINI_API_KEY") or settings.get("api_key", "")
     if api_key and not os.getenv("GEMINI_API_KEY"):
         # Set environment variable if using settings API key
         os.environ["GEMINI_API_KEY"] = api_key
-    
+
     return (
         settings.get("model", DEFAULT_SETTINGS["model"]),
         settings.get("summary_prompt", DEFAULT_SETTINGS["summary_prompt"]),
-        int(settings.get("max_duration_seconds", DEFAULT_SETTINGS["max_duration_seconds"])),
-        settings.get("transcription_prompt", DEFAULT_SETTINGS["transcription_prompt"])
+        int(
+            settings.get(
+                "max_duration_seconds", DEFAULT_SETTINGS["max_duration_seconds"]
+            )
+        ),
+        settings.get("transcription_prompt", DEFAULT_SETTINGS["transcription_prompt"]),
     )
+
 
 def update_setting(key, value):
     """Update a single setting."""
     settings = load_settings()
     settings[key] = value
     save_settings(settings)
-    
+
     # If updating API key, also update environment variable
     if key == "api_key" and value:
         os.environ["GEMINI_API_KEY"] = value
-    
+
     logger.info(f"Updated setting {key}")
+
 
 def get_setting(key, default=None):
     """Get a single setting value."""

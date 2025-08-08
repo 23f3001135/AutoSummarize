@@ -50,6 +50,8 @@ def run_summarization_task(job_id, file_path_str):
     """The function that will run in a background thread."""
     file_path = Path(file_path_str)
     logger.info(f"Job {job_id}: Starting processing for {file_path.name}")
+    import time
+    job_start = time.monotonic()
     
     try:
         # Set initial status
@@ -106,6 +108,13 @@ def run_summarization_task(job_id, file_path_str):
         if os.path.exists(file_path):
             os.remove(file_path)
             logger.info(f"Job {job_id}: Cleaned up temporary file: {file_path.name}")
+        # Log total job duration
+        import time as _t
+        duration_s = _t.monotonic() - job_start
+        with jobs_lock:
+            status = jobs.get(job_id, {}).get('status', 'UNKNOWN')
+            filename = jobs.get(job_id, {}).get('filename', file_path.name)
+        logger.info(f"Job {job_id} finished with status {status} in {duration_s:.2f}s (file: {filename})")
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -187,12 +196,14 @@ def summarize_route():
     if file.filename == '' or file.filename is None:
         return jsonify({'error': 'No selected file'}), 400
 
-    filename = secure_filename(file.filename)
-    save_path = Path(app.config['UPLOAD_FOLDER']) / filename
-    file.save(save_path)
-    
-    # Create a unique job ID and store its initial state
+    # Create a unique job ID first to include it in the saved filename (avoid collisions)
     job_id = str(uuid.uuid4())
+
+    # Build a unique filename: <job_id>_<original_name>
+    original_name = secure_filename(file.filename)
+    unique_filename = f"{job_id}_{original_name}" if original_name else job_id
+    save_path = Path(app.config['UPLOAD_FOLDER']) / unique_filename
+    file.save(save_path)
     
     # Create job data with proper timestamp
     from datetime import datetime
@@ -204,7 +215,7 @@ def summarize_route():
         'summary': None, 
         'transcript': None, 
         'error': None,
-        'filename': filename,
+    'filename': unique_filename,
         'created_at': datetime.now().isoformat(),
         'completed_at': None
     }
@@ -223,6 +234,17 @@ def summarize_route():
     executor.submit(run_summarization_task, job_id, str(save_path))
 
     return jsonify({'job_id': job_id})
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Basic health endpoint for liveness checks."""
+    try:
+        with jobs_lock:
+            job_count = len(jobs)
+        return jsonify({'status': 'ok', 'jobs_in_memory': job_count}), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({'status': 'error'}), 500
 
 @app.route('/status/<job_id>')
 def get_status(job_id):
