@@ -1,9 +1,11 @@
 services:
   web:
-    image: namanaarzoo/autosummarize-web:v2.0_beta
+    image: namanaarzoo/autosummarize-web:v2.1
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      - PYTHON_GIL=0
     env_file:
       - .env
     ports:

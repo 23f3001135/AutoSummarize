@@ -14,6 +14,37 @@ from google import genai
 logger = logging.getLogger(__name__)
 
 
+def _normalize_to_mp3(input_path: Path, output_dir: Path) -> Path:
+    """
+    Convert any input media to a normalized MP3 suitable for transcription.
+    Returns the path to the normalized MP3.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / f"normalized_{input_path.stem}.mp3"
+    try:
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", str(input_path),
+            "-vn",                 # drop video, we only need audio for transcription
+            "-c:a", "libmp3lame",
+            "-b:a", "160k",
+            "-ar", "44100",
+            "-ac", "2",
+            str(out_path),
+        ]
+        logger.info(f"Normalizing media to MP3: {input_path.name} -> {out_path.name}")
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        if not out_path.exists():
+            raise RuntimeError("Normalization completed but output file not found")
+        return out_path
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg normalization failed: {e.stderr}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to normalize media {input_path.name}: {e}")
+        raise
+
 def _get_media_duration(file_path: Path) -> float:
     """
     Get the duration of a media file using FFprobe.
@@ -254,127 +285,133 @@ def process_single_file(file_path: Path, progress_callback=None) -> dict:
 
             update_progress(10, "✅ Upload complete, validating file...")
 
-            # Get media duration using FFprobe
-            duration = _get_media_duration(file_path)
+            # Always normalize to MP3 for compatibility
+            update_progress(15, "🎧 Converting media to MP3 for compatibility...")
+            with tempfile.TemporaryDirectory() as norm_dir:
+                normalized_path = _normalize_to_mp3(file_path, Path(norm_dir))
 
-            update_progress(20, "🔍 Analyzing file format and size...")
+                # Get media duration using FFprobe (normalized)
+                duration = _get_media_duration(normalized_path)
 
-            if duration <= max_duration_seconds:
-                # --- Short File Workflow ---
-                logger.info(
-                    f"File duration ({duration:.2f}s) is under the limit. Processing directly."
-                )
+                update_progress(20, "🔍 Analyzing file format and size...")
 
-                update_progress(30, "🚀 Sending to Google AI for processing...")
-
-                # 1. Transcribe the whole file
-                logger.info("Transcribing the full short file...")
-                # Note: We use transcribe_chunk_async here as it handles the full upload/process/delete cycle for a single file.
-                transcript_text = await gemini_processor.transcribe_chunk_async(
-                    client,
-                    model,
-                    transcription_prompt,
-                    file_path,
-                    status_cb=lambda msg: update_progress(60, msg),
-                )
-
-                update_progress(
-                    70, "🤖 AI finished transcription, generating summary..."
-                )
-
-                if not transcript_text:
-                    raise ValueError("Transcription returned an empty result.")
-
-                # 2. Summarize the transcript
-                logger.info("Summarizing the transcript...")
-                update_progress(90, "📝 Finalizing summary...")
-                summary_text = await gemini_processor.generate_async(
-                    model=model,
-                    prompt=summary_prompt,
-                    transcript_text=transcript_text,
-                    status_cb=lambda msg: update_progress(92, msg),
-                )
-                update_progress(95, "🎉 Almost done, preparing results...")
-                return {"summary": summary_text, "transcript": transcript_text}
-            else:
-                # --- Long File Workflow ---
-                logger.info(
-                    f"File duration ({duration:.2f}s) exceeds the limit. Starting chunking process."
-                )
-
-                update_progress(25, "✂️ Splitting large file into chunks...")
-
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    chunk_output_dir = Path(temp_dir)
-
-                    # 1. Split the audio into chunks
-                    logger.info("Splitting audio into chunks...")
-                    chunk_paths = _split_audio(
-                        file_path, max_duration_seconds, chunk_output_dir
+                if duration <= max_duration_seconds:
+                    # --- Short File Workflow ---
+                    logger.info(
+                        f"File duration ({duration:.2f}s) is under the limit. Processing directly."
                     )
 
-                    if not chunk_paths:
-                        raise ValueError("File splitting resulted in no chunks.")
+                    update_progress(30, "🚀 Sending to Google AI for processing...")
+
+                    # 1. Transcribe the whole file
+                    logger.info("Transcribing the full short file...")
+                    # Note: We use transcribe_chunk_async here as it handles the full upload/process/delete cycle for a single file.
+                    transcript_text = await gemini_processor.transcribe_chunk_async(
+                        client,
+                        model,
+                        transcription_prompt,
+                        normalized_path,
+                        status_cb=lambda msg: update_progress(60, msg),
+                    )
 
                     update_progress(
-                        35, f"🚀 Processing {len(chunk_paths)} chunks with AI..."
+                        70, "🤖 AI finished transcription, generating summary..."
                     )
 
-                    # 2. Transcribe each chunk sequentially
-                    logger.info(
-                        f"Transcribing {len(chunk_paths)} chunks sequentially..."
-                    )
+                    if not transcript_text:
+                        raise ValueError("Transcription returned an empty result.")
 
-                    transcripts = []
-                    for i, chunk in enumerate(chunk_paths):
-                        chunk_progress = 35 + (i / len(chunk_paths)) * 50  # 35% to 85%
-                        update_progress(
-                            int(chunk_progress),
-                            f"🤖 Processing chunk {i + 1}/{len(chunk_paths)}...",
-                        )
-
-                        logger.info(f"Transcribing chunk {i + 1}/{len(chunk_paths)}...")
-                        transcript = await gemini_processor.transcribe_chunk_async(
-                            client,
-                            model,
-                            transcription_prompt,
-                            chunk,
-                            status_cb=lambda msg, _i=i: update_progress(
-                                int(35 + ((_i + 0.5) / len(chunk_paths)) * 50), msg
-                            ),
-                        )
-                        transcripts.append(transcript)
-                        if i < len(chunk_paths) - 1:
-                            logger.info(
-                                "Waiting for 6 seconds before next transcription request..."
-                            )
-                            await asyncio.sleep(6)
-
-                    full_transcript = "\n".join(transcripts)
-
-                    if not full_transcript:
-                        raise ValueError(
-                            "Transcription of chunks returned an empty result."
-                        )
-
-                    update_progress(
-                        85, "📝 All chunks processed, generating final summary..."
-                    )
-                    logger.info(
-                        "All chunks transcribed. Generating final summary from transcript."
-                    )
-
-                    # 3. Generate the final summary from the combined transcript
-                    final_summary = await gemini_processor.generate_async(
+                    # 2. Summarize the transcript
+                    logger.info("Summarizing the transcript...")
+                    update_progress(90, "📝 Finalizing summary...")
+                    summary_text = await gemini_processor.generate_async(
                         model=model,
                         prompt=summary_prompt,
-                        transcript_text=full_transcript,
+                        transcript_text=transcript_text,
                         status_cb=lambda msg: update_progress(92, msg),
                     )
-
                     update_progress(95, "🎉 Almost done, preparing results...")
+                    return {"summary": summary_text, "transcript": transcript_text}
 
-                    return {"summary": final_summary, "transcript": full_transcript}
+                else:
+                    # --- Long File Workflow ---
+                    logger.info(
+                        f"File duration ({duration:.2f}s) exceeds the limit. Starting chunking process."
+                    )
+
+                    update_progress(25, "✂️ Splitting large file into chunks...")
+
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        chunk_output_dir = Path(temp_dir)
+
+                        # 1. Split the audio into chunks
+                        logger.info("Splitting audio into chunks...")
+                        chunk_paths = _split_audio(
+                            normalized_path, max_duration_seconds, chunk_output_dir
+                        )
+
+                        if not chunk_paths:
+                            raise ValueError("File splitting resulted in no chunks.")
+
+                        update_progress(
+                            35, f"🚀 Processing {len(chunk_paths)} chunks with AI..."
+                        )
+
+                        # 2. Transcribe each chunk sequentially
+                        logger.info(
+                            f"Transcribing {len(chunk_paths)} chunks sequentially..."
+                        )
+
+                        transcripts = []
+                        for i, chunk in enumerate(chunk_paths):
+                            chunk_progress = 35 + (i / len(chunk_paths)) * 50  # 35% to 85%
+                            update_progress(
+                                int(chunk_progress),
+                                f"🤖 Processing chunk {i + 1}/{len(chunk_paths)}...",
+                            )
+
+                            logger.info(f"Transcribing chunk {i + 1}/{len(chunk_paths)}...")
+                            transcript = await gemini_processor.transcribe_chunk_async(
+                                client,
+                                model,
+                                transcription_prompt,
+                                chunk,
+                                status_cb=lambda msg, _i=i: update_progress(
+                                    int(35 + ((_i + 0.5) / len(chunk_paths)) * 50), msg
+                                ),
+                            )
+                            transcripts.append(transcript)
+                            if i < len(chunk_paths) - 1:
+                                logger.info(
+                                    "Waiting for 6 seconds before next transcription request..."
+                                )
+                                await asyncio.sleep(6)
+
+                        full_transcript = "\n".join(transcripts)
+
+                        if not full_transcript:
+                            raise ValueError(
+                                "Transcription of chunks returned an empty result."
+                            )
+
+                        update_progress(
+                            85, "📝 All chunks processed, generating final summary..."
+                        )
+                        logger.info(
+                            "All chunks transcribed. Generating final summary from transcript."
+                        )
+
+                        # 3. Generate the final summary from the combined transcript
+                        final_summary = await gemini_processor.generate_async(
+                            model=model,
+                            prompt=summary_prompt,
+                            transcript_text=full_transcript,
+                            status_cb=lambda msg: update_progress(92, msg),
+                        )
+
+                        update_progress(95, "🎉 Almost done, preparing results...")
+
+                        return {"summary": final_summary, "transcript": full_transcript}
 
         # Run the main async orchestrator
         result = asyncio.run(main())
